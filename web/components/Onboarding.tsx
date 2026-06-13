@@ -17,6 +17,7 @@ import {
   User,
   Venus,
   VenusAndMars,
+  X,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -29,6 +30,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Progress } from "@/components/ui/progress"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
   SelectContent,
@@ -37,7 +39,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { APP_NAME, COUNTRY_CITY_API_URL } from "@/constants"
+import {
+  APP_NAME,
+  COUNTRY_LANGUAGE_API_URL,
+  COUNTRY_CITY_API_URL,
+} from "@/constants"
 import { cn } from "@/lib/utils"
 
 type Prefs = {
@@ -50,12 +56,15 @@ type Prefs = {
   city: string
   location: string
   occupation: string
+  maritalStatus: string
+  languages: string[]
   relationshipGoal: string
   partnerGenders: string[]
   partnerAges: string[]
 }
 
 type Props = {
+  onBack?: () => void
   onComplete: (prefs: Prefs) => void
 }
 
@@ -64,8 +73,25 @@ type CountryCityOption = {
   cities: string[]
 }
 
-const AGE_RANGES = ["18-24", "25-30", "31-40", "41+"]
+type RestCountry = {
+  languages?: Record<string, string>
+}
+
+const AGE_RANGES = ["any", "18-24", "25-30", "31-40", "41+"]
 const STEPS = ["Profile", "Preferences", "Review"]
+const RELATIONSHIP_GOALS = [
+  { value: "long-term", label: "Long-term partner" },
+  { value: "meaningful-dates", label: "Meaningful dates" },
+  { value: "friendship-first", label: "Friendship first" },
+  { value: "exploring", label: "Still exploring" },
+]
+const MARITAL_STATUSES = [
+  { value: "single", label: "Single" },
+  { value: "divorced", label: "Divorced" },
+  { value: "separated", label: "Separated" },
+  { value: "widowed", label: "Widowed" },
+]
+const MAX_LANGUAGES = 5
 
 const DEFAULT_FORM: Prefs = {
   name: "",
@@ -77,12 +103,14 @@ const DEFAULT_FORM: Prefs = {
   city: "",
   location: "",
   occupation: "",
-  relationshipGoal: "serious",
+  maritalStatus: "single",
+  languages: [],
+  relationshipGoal: "",
   partnerGenders: ["female"],
-  partnerAges: ["18-24"],
+  partnerAges: ["any"],
 }
 
-export default function Onboarding({ onComplete }: Props) {
+export default function Onboarding({ onBack, onComplete }: Props) {
   const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState<Prefs>(() => getSavedOnboardingForm())
@@ -91,6 +119,9 @@ export default function Onboarding({ onComplete }: Props) {
   )
   const [locationsLoading, setLocationsLoading] = useState(true)
   const [locationsError, setLocationsError] = useState("")
+  const [languageOptions, setLanguageOptions] = useState<string[]>([])
+  const [languagesLoading, setLanguagesLoading] = useState(false)
+  const [languagesError, setLanguagesError] = useState("")
 
   useEffect(() => {
     try {
@@ -142,6 +173,47 @@ export default function Onboarding({ onComplete }: Props) {
     }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadLanguages() {
+      setLanguagesLoading(true)
+      setLanguagesError("")
+
+      try {
+        const response = await fetch(COUNTRY_LANGUAGE_API_URL)
+        const payload = await response.json()
+        const countries = Array.isArray(payload) ? payload : []
+        const languages = countries.flatMap((country: RestCountry) =>
+          Object.values(country.languages ?? {})
+        ) as string[]
+        const uniqueLanguages = Array.from(new Set(languages)).sort((a, b) =>
+          a.localeCompare(b)
+        )
+
+        if (!cancelled) {
+          setLanguageOptions(uniqueLanguages)
+          if (uniqueLanguages.length === 0) {
+            setLanguagesError("No languages found.")
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setLanguageOptions([])
+          setLanguagesError("Could not load languages.")
+        }
+      } finally {
+        if (!cancelled) setLanguagesLoading(false)
+      }
+    }
+
+    void loadLanguages()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   function update<K extends keyof Prefs>(k: K, v: Prefs[K]) {
     setForm((s) => ({ ...s, [k]: v }))
   }
@@ -179,7 +251,7 @@ export default function Onboarding({ onComplete }: Props) {
     setForm((s) => ({
       ...s,
       city,
-      location: city ? `${city}, ${s.country}` : s.country,
+      location: formatSetupLocation({ ...s, city }),
     }))
   }
 
@@ -194,7 +266,12 @@ export default function Onboarding({ onComplete }: Props) {
   }
 
   function back() {
-    if (step > 0) setStep((s) => s - 1)
+    if (step > 0) {
+      setStep((s) => s - 1)
+      return
+    }
+
+    onBack?.()
   }
 
   async function submit() {
@@ -277,14 +354,7 @@ export default function Onboarding({ onComplete }: Props) {
                     />
                   </Field>
 
-                  <Field label="Gender" className="sm:col-span-2">
-                    <GenderToggle
-                      value={form.gender}
-                      onValueChange={(value) => update("gender", value)}
-                    />
-                  </Field>
-
-                  <Field label="Birthday" className="sm:col-span-2">
+                  <Field label="Birthday">
                     <BirthdayPicker
                       value={form.birthday}
                       onValueChange={updateBirthday}
@@ -294,6 +364,21 @@ export default function Onboarding({ onComplete }: Props) {
                         You must be at least 18 to continue.
                       </p>
                     ) : null}
+                  </Field>
+
+                  <Field label="Marital status">
+                    <SelectControl
+                      value={form.maritalStatus}
+                      onValueChange={(value) => update("maritalStatus", value)}
+                      items={MARITAL_STATUSES}
+                    />
+                  </Field>
+
+                  <Field label="Gender" className="sm:col-span-2">
+                    <GenderToggle
+                      value={form.gender}
+                      onValueChange={(value) => update("gender", value)}
+                    />
                   </Field>
 
                   <Field label="Country">
@@ -339,6 +424,59 @@ export default function Onboarding({ onComplete }: Props) {
                     </p>
                   ) : null}
 
+                  <Field label="Languages" className="sm:col-span-2">
+                    {languagesLoading ? (
+                      <p className="text-sm text-muted-foreground">
+                        Loading languages...
+                      </p>
+                    ) : languageOptions.length > 0 ? (
+                      <div className="space-y-2.5">
+                        <LanguagePicker
+                          options={languageOptions}
+                          selected={form.languages}
+                          maxSelected={MAX_LANGUAGES}
+                          onToggle={(language) =>
+                            update("languages", toggle(form.languages, language))
+                          }
+                        />
+                        {form.languages.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {form.languages.map((language) => (
+                              <button
+                                key={language}
+                                type="button"
+                                onClick={() =>
+                                  update(
+                                    "languages",
+                                    form.languages.filter((item) => item !== language)
+                                  )
+                                }
+                                className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/15"
+                                aria-label={`Remove ${language}`}
+                              >
+                                {language}
+                                <X className="size-3.5" />
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            No languages selected.
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        No languages available.
+                      </p>
+                    )}
+                    {languagesError ? (
+                      <p className="text-xs text-destructive">
+                        {languagesError}
+                      </p>
+                    ) : null}
+                  </Field>
+
                   <Field label="Occupation (optional)">
                     <div className="relative">
                       <BriefcaseBusiness className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -351,21 +489,14 @@ export default function Onboarding({ onComplete }: Props) {
                     </div>
                   </Field>
 
-                  <Field label="Relationship goal">
+                  <Field label="Looking for">
                     <SelectControl
                       value={form.relationshipGoal}
                       onValueChange={(value) =>
                         update("relationshipGoal", value)
                       }
-                      items={[
-                        {
-                          value: "serious",
-                          label: "Serious relationship",
-                        },
-                        { value: "friendship", label: "Friendship first" },
-                        { value: "casual", label: "Casual dating" },
-                        { value: "open", label: "Open to possibilities" },
-                      ]}
+                      placeholder="Choose what you want"
+                      items={RELATIONSHIP_GOALS}
                     />
                   </Field>
                 </div>
@@ -399,14 +530,24 @@ export default function Onboarding({ onComplete }: Props) {
 
                 <ChoiceGrid
                   title="Preferred age"
-                  choices={AGE_RANGES.map((range) => ({
-                    id: range,
-                    label: range,
-                    detail:
-                      range === "41+"
-                        ? "Experienced and established"
-                        : "Balanced discovery range",
-                  }))}
+                  choices={AGE_RANGES.map((range) => {
+                    if (range === "any") {
+                      return {
+                        id: range,
+                        label: "Any",
+                        detail: "Show every age range",
+                      }
+                    }
+
+                    return {
+                      id: range,
+                      label: range,
+                      detail:
+                        range === "41+"
+                          ? "Experienced and established"
+                          : "Balanced discovery range",
+                    }
+                  })}
                   selected={form.partnerAges}
                   onToggle={(id) =>
                     update("partnerAges", toggle(form.partnerAges, id))
@@ -436,13 +577,28 @@ export default function Onboarding({ onComplete }: Props) {
                   <ReviewItem label="Gender" value={form.gender} />
                   <ReviewItem
                     label="Location"
-                    value={form.location || `${form.city}, ${form.country}`}
+                    value={form.location || formatSetupLocation(form)}
                   />
                   <ReviewItem
                     label="Occupation"
                     value={form.occupation || "Not set"}
                   />
-                  <ReviewItem label="Goal" value={form.relationshipGoal} />
+                  <ReviewItem
+                    label="Marital status"
+                    value={getMaritalStatusLabel(form.maritalStatus)}
+                  />
+                  <ReviewItem
+                    label="Languages"
+                    value={
+                      form.languages.length
+                        ? form.languages.join(", ")
+                        : "Not set"
+                    }
+                  />
+                  <ReviewItem
+                    label="Looking for"
+                    value={getRelationshipGoalLabel(form.relationshipGoal)}
+                  />
                   <ReviewItem
                     label="Looking for"
                     value={form.partnerGenders.join(", ")}
@@ -460,7 +616,6 @@ export default function Onboarding({ onComplete }: Props) {
             <Button
               variant="outline"
               onClick={back}
-              disabled={step === 0}
               className="gap-2"
             >
               <ArrowLeft className="size-4" />
@@ -488,6 +643,27 @@ export default function Onboarding({ onComplete }: Props) {
 function getCities(country: string, options: CountryCityOption[]) {
   return (
     options.find((item) => item.country === country)?.cities ?? []
+  )
+}
+
+function formatSetupLocation(form: Pick<Prefs, "city" | "country">) {
+  return [form.city, form.country]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(", ")
+}
+
+function getRelationshipGoalLabel(value: string) {
+  return (
+    RELATIONSHIP_GOALS.find((goal) => goal.value === value)?.label ??
+    value.replace(/-/g, " ")
+  )
+}
+
+function getMaritalStatusLabel(value: string) {
+  return (
+    MARITAL_STATUSES.find((status) => status.value === value)?.label ??
+    value.replace(/-/g, " ")
   )
 }
 
@@ -541,7 +717,7 @@ function Field({
 }) {
   return (
     <label className={cn("block space-y-2", className)}>
-      <span className="text-sm font-medium">{label}</span>
+      <span className="text-sm font-medium text-muted-foreground">{label}</span>
       {children}
     </label>
   )
@@ -657,6 +833,80 @@ function GenderToggle({
       })}
       </TabsList>
     </Tabs>
+  )
+}
+
+function LanguagePicker({
+  onToggle,
+  options,
+  maxSelected,
+  selected,
+}: {
+  onToggle: (language: string) => void
+  maxSelected: number
+  options: string[]
+  selected: string[]
+}) {
+  const [query, setQuery] = useState("")
+  const filteredOptions = options.filter((language) =>
+    language.toLowerCase().includes(query.trim().toLowerCase())
+  )
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-muted/35 px-3 py-2 text-left text-sm shadow-xs outline-none transition hover:bg-muted/50 focus:border-ring focus:bg-background focus:ring-3 focus:ring-ring/30"
+        >
+          <span className={cn("truncate", selected.length === 0 && "text-muted-foreground")}>
+            {selected.length > 0
+              ? `${selected.length}/${maxSelected} language${selected.length === 1 ? "" : "s"} selected`
+              : "Pick languages"}
+          </span>
+          <ChevronRight className="size-4 rotate-90 text-muted-foreground" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[min(24rem,calc(100vw-2rem))] p-2">
+        <div className="space-y-2">
+          <Input
+            value={query}
+            placeholder="Search languages"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <ScrollArea className="h-72 rounded-md">
+            {filteredOptions.length > 0 ? (
+              filteredOptions.map((language) => {
+                const active = selected.includes(language)
+                const disabled = !active && selected.length >= maxSelected
+
+                return (
+                  <button
+                    key={language}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => {
+                      if (!disabled) onToggle(language)
+                    }}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-40",
+                      active && "font-medium text-primary"
+                    )}
+                  >
+                    <span>{language}</span>
+                    {active ? <Check className="size-4" /> : null}
+                  </button>
+                )
+              })
+            ) : (
+              <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                No languages found.
+              </p>
+            )}
+          </ScrollArea>
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -928,9 +1178,9 @@ function ChoiceGrid({
   onToggle: (id: string) => void
 }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-3">
         {choices.map((choice) => {
           const active = selected.includes(choice.id)
           return (
@@ -939,24 +1189,24 @@ function ChoiceGrid({
               type="button"
               onClick={() => onToggle(choice.id)}
               className={cn(
-                "min-h-28 rounded-lg border bg-background p-4 text-left shadow-xs transition hover:border-primary/40 hover:bg-muted/40",
+                "min-h-20 rounded-md border bg-background p-3 text-left shadow-xs transition hover:border-primary/40 hover:bg-muted/40",
                 active && "border-primary bg-primary/5 ring-3 ring-primary/15"
               )}
             >
-              <div className="flex items-start justify-between gap-3">
-                <span className="text-base font-semibold">{choice.label}</span>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold">{choice.label}</span>
                 <span
                   className={cn(
-                    "flex size-5 items-center justify-center rounded-full border",
+                    "flex size-4 items-center justify-center rounded-full border",
                     active
                       ? "border-primary bg-primary text-primary-foreground"
                       : "bg-muted"
                   )}
                 >
-                  {active && <Check className="size-3" />}
+                  {active && <Check className="size-2.5" />}
                 </span>
               </div>
-              <p className="mt-3 text-sm leading-5 text-muted-foreground">
+              <p className="mt-2 line-clamp-2 text-xs leading-4 text-muted-foreground">
                 {choice.detail}
               </p>
             </button>

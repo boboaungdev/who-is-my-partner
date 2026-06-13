@@ -11,11 +11,15 @@ import {
   Eye,
   Filter,
   HeartHandshake,
+  Languages,
   Loader2,
   MapPin,
   MapPinned,
+  Mars,
   Sparkles,
   UserRound,
+  Venus,
+  VenusAndMars,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 
@@ -27,7 +31,11 @@ import UserCard, { type User } from "@/components/UserCard"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { APP_NAME, RANDOM_USER_BASE_URL } from "@/constants"
+import {
+  APP_NAME,
+  COUNTRY_LANGUAGE_API_URL,
+  RANDOM_USER_BASE_URL,
+} from "@/constants"
 import { getProfileBadges } from "@/lib/profile-badges"
 import { cn } from "@/lib/utils"
 
@@ -63,9 +71,43 @@ type Prefs = {
   city?: string
   location?: string
   occupation?: string
+  maritalStatus?: string
+  languages?: string[]
   relationshipGoal?: string
   partnerGenders: string[]
   partnerAges: string[]
+}
+
+type CountryLanguageData = {
+  cca2?: string
+  flag?: string
+  name?: { common?: string; official?: string }
+  languages?: Record<string, string>
+}
+
+type CountryMeta = {
+  flag?: string
+  flagUrl?: string
+  languages: string[]
+}
+
+function normalizeCountryName(value?: string) {
+  return (value ?? "").trim().toLowerCase()
+}
+
+function getCountryLanguages(
+  country: string | undefined,
+  countryMeta: Record<string, CountryMeta>
+) {
+  const languages = countryMeta[normalizeCountryName(country)]?.languages ?? []
+  return languages.slice(0, 5)
+}
+
+function getCountryFlagUrl(
+  country: string | undefined,
+  countryMeta: Record<string, CountryMeta>
+) {
+  return countryMeta[normalizeCountryName(country)]?.flagUrl
 }
 
 export default function Page() {
@@ -75,6 +117,7 @@ export default function Page() {
   const [prefs, setPrefs] = useState<Prefs | null>(null)
   const [view, setView] = useState<AppView>("home")
   const [selectedUser, setSelectedUser] = useState<RandomUser | null>(null)
+  const [countryMeta, setCountryMeta] = useState<Record<string, CountryMeta>>({})
 
   function goHome() {
     setView("home")
@@ -159,6 +202,55 @@ export default function Page() {
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+
+    async function loadCountryLanguages() {
+      try {
+        const response = await fetch(COUNTRY_LANGUAGE_API_URL)
+        const payload = await response.json()
+        const countries = Array.isArray(payload) ? payload : []
+        const next = countries.reduce(
+          (acc: Record<string, CountryMeta>, country: CountryLanguageData) => {
+            const languages = Object.values(country.languages ?? {}) as string[]
+            const uniqueLanguages = Array.from(new Set(languages)).sort((a, b) =>
+              a.localeCompare(b)
+            )
+            const meta = {
+              flag: country.flag,
+              flagUrl: country.cca2
+                ? `https://flagcdn.com/w40/${country.cca2.toLowerCase()}.png`
+                : undefined,
+              languages: uniqueLanguages,
+            }
+
+            if (country.name?.common && (meta.flagUrl || country.flag || uniqueLanguages.length)) {
+              acc[normalizeCountryName(country.name.common)] = meta
+            }
+            if (country.name?.official && (meta.flagUrl || country.flag || uniqueLanguages.length)) {
+              acc[normalizeCountryName(country.name.official)] = meta
+            }
+            if (country.cca2 && (meta.flagUrl || country.flag || uniqueLanguages.length)) {
+              acc[normalizeCountryName(country.cca2)] = meta
+            }
+            return acc
+          },
+          {}
+        )
+
+        if (!cancelled) setCountryMeta(next)
+      } catch {
+        if (!cancelled) setCountryMeta({})
+      }
+    }
+
+    void loadCountryLanguages()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     function syncFromUrl() {
       const nextView = getViewQuery()
       setView(nextView === "setup" && prefs ? "deck" : nextView ?? (prefs ? "deck" : "home"))
@@ -177,7 +269,11 @@ export default function Page() {
       if (prefs.partnerGenders && !prefs.partnerGenders.includes("any")) {
         if (!prefs.partnerGenders.includes(gender ?? "")) return false
       }
-      if (prefs.partnerAges && prefs.partnerAges.length > 0) {
+      if (
+        prefs.partnerAges &&
+        prefs.partnerAges.length > 0 &&
+        !prefs.partnerAges.includes("any")
+      ) {
         const ok = prefs.partnerAges.some((r: string) => {
           if (!age) return false
           if (r === "41+") return age >= 41
@@ -224,6 +320,7 @@ export default function Page() {
       <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:py-8">
         {view === "setup" ? (
           <Onboarding
+            onBack={goHome}
             onComplete={(p: Prefs) => {
               setPrefs(p)
               if (selectedUser) {
@@ -237,6 +334,7 @@ export default function Page() {
           />
         ) : view === "home" || !prefs ? (
           <MarketingHome
+            countryMeta={countryMeta}
             users={users}
             onStart={goSetup}
             onSelectUser={selectLandingUser}
@@ -276,9 +374,13 @@ export default function Page() {
                     values={[
                       `${prefs.age}`,
                       prefs.gender,
-                      prefs.relationshipGoal ?? "serious",
+                      getMaritalStatusLabel(prefs.maritalStatus),
+                      getRelationshipGoalLabel(prefs.relationshipGoal),
                     ]}
                   />
+                  {prefs.languages?.length ? (
+                    <FilterRow label="Languages" values={prefs.languages} />
+                  ) : null}
                 </div>
               </Card>
 
@@ -354,11 +456,13 @@ function saveSelectedUser(user: RandomUser) {
 }
 
 function MarketingHome({
+  countryMeta,
   onLoadMore,
   onSelectUser,
   users,
   onStart,
 }: {
+  countryMeta: Record<string, CountryMeta>
   onLoadMore: () => void
   onSelectUser: (user: RandomUser) => void
   users: RandomUser[]
@@ -414,6 +518,7 @@ function MarketingHome({
         </div>
 
         <HeroPreview
+          countryMeta={countryMeta}
           currentIndex={index}
           onNext={nextProfile}
           onPrev={prevProfile}
@@ -450,12 +555,14 @@ function LandingPoint({ label }: { label: string }) {
 }
 
 function HeroPreview({
+  countryMeta,
   currentIndex,
   onNext,
   onPrev,
   onView,
   users,
 }: {
+  countryMeta: Record<string, CountryMeta>
   currentIndex: number
   onNext: () => void
   onPrev: () => void
@@ -479,11 +586,12 @@ function HeroPreview({
         <Badge variant="outline">Preview</Badge>
       </div>
 
-      <div className="relative h-[430px] overflow-hidden sm:h-[450px]">
+      <div className="relative h-[470px] overflow-hidden sm:h-[490px]">
         {visibleCards.map((user, index) => (
           <CarouselProfileCard
             key={user?.login?.uuid ?? index}
             active={index === 1}
+            countryMeta={countryMeta}
             user={user}
             fallbackIndex={index}
           />
@@ -530,10 +638,12 @@ function HeroPreview({
 
 function CarouselProfileCard({
   active,
+  countryMeta,
   fallbackIndex,
   user,
 }: {
   active: boolean
+  countryMeta: Record<string, CountryMeta>
   fallbackIndex: number
   user?: RandomUser
 }) {
@@ -550,6 +660,11 @@ function CarouselProfileCard({
   const username = user?.login?.username ? `@${user.login.username}` : "Profile preview"
   const age = String(user?.dob?.age ?? fallbackAges[fallbackIndex])
   const gender = user?.gender ?? fallbackGenders[fallbackIndex]
+  const country = user?.location?.country
+  const countryFlagUrl =
+    getCountryFlagUrl(country, countryMeta) ??
+    getCountryFlagUrl(user?.nat, countryMeta)
+  const languages = getCountryLanguages(country, countryMeta)
   const badgeSeed = user?.login?.uuid ?? name
   const profileBadges = getProfileBadges(badgeSeed)
   const stackClasses = [
@@ -561,12 +676,26 @@ function CarouselProfileCard({
   return (
     <Card
       className={cn(
-        "absolute top-0 h-[420px] w-[min(21rem,78vw)] overflow-hidden border-border/80 p-0 transition duration-300 sm:h-[440px]",
+        "absolute top-0 h-[455px] w-[min(21rem,78vw)] overflow-hidden border-border/80 p-0 transition duration-300 sm:h-[475px]",
         stackClasses[fallbackIndex],
         active ? "shadow-xl shadow-primary/5" : "shadow-sm"
       )}
     >
       <div className="relative h-24 overflow-hidden bg-muted">
+        {countryFlagUrl ? (
+          <span
+            className="absolute right-3 top-3 z-10 flex items-center justify-center"
+            title={country}
+            aria-label={country ? `${country} flag` : "Country flag"}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={countryFlagUrl}
+              alt=""
+              className="h-6 w-8 rounded-[2px] object-cover shadow-sm"
+            />
+          </span>
+        ) : null}
         {user?.picture?.large ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -582,11 +711,11 @@ function CarouselProfileCard({
         <div className="absolute inset-0 bg-background/35" />
       </div>
 
-      <div className="-mt-12 flex h-[calc(100%-3rem)] flex-col p-5 pt-0 text-center">
+      <div className="-mt-14 flex h-[calc(100%-3rem)] flex-col p-5 pt-0 text-center">
         <div
           className={cn(
-            "relative mx-auto overflow-hidden rounded-full border-4 border-background bg-muted shadow-md",
-            active ? "size-28" : "size-20"
+            "relative mx-auto shrink-0 overflow-hidden rounded-full border-4 border-background bg-muted shadow-md",
+            active ? "h-28 w-28" : "h-20 w-20"
           )}
         >
           {user?.picture?.large ? (
@@ -594,7 +723,7 @@ function CarouselProfileCard({
             <img
               src={user.picture.large}
               alt={name || "Profile"}
-              className="size-full object-cover"
+              className="absolute inset-0 h-full w-full rounded-full object-cover"
             />
           ) : (
             <div className="flex size-full items-center justify-center text-muted-foreground">
@@ -623,12 +752,15 @@ function CarouselProfileCard({
           <div className="mt-4 space-y-3">
             <div className="flex items-center gap-3 text-sm">
               <span className="h-px flex-1 bg-border" />
-              <span className="text-xs font-medium text-muted-foreground">Details</span>
+              <span className="text-xs font-medium text-muted-foreground">Summary</span>
               <span className="h-px flex-1 bg-border" />
             </div>
-            <PreviewDetail icon={<MapPin className="size-4" />} value={location} />
-            <PreviewDetail icon={<CalendarDays className="size-4" />} value={`${age} years old`} />
-            <PreviewDetail icon={<UserRound className="size-4" />} value={gender} capitalize />
+            <div className="grid grid-cols-2 gap-2">
+              <PreviewDetail icon={<MapPin className="size-4" />} value={location} wide />
+              <PreviewDetail icon={<CalendarDays className="size-4" />} value={`${age} yrs`} />
+              <PreviewDetail icon={getGenderIcon(gender)} value={gender} capitalize />
+              <PreviewLanguages languages={languages} />
+            </div>
           </div>
         ) : (
           <div className="mt-4 flex flex-1 flex-col justify-end space-y-3">
@@ -645,15 +777,22 @@ function CarouselProfileCard({
 function PreviewDetail({
   capitalize,
   icon,
+  wide,
   value,
 }: {
   capitalize?: boolean
   icon: React.ReactNode
+  wide?: boolean
   value: string
 }) {
   return (
-    <div className="flex items-center gap-3 py-1.5 text-left">
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+    <div
+      className={cn(
+        "flex min-w-0 items-center gap-2 rounded-md border bg-muted/35 px-2.5 py-2 text-left",
+        wide && "col-span-2"
+      )}
+    >
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-background text-muted-foreground">
         {icon}
       </span>
       <p className={cn("truncate text-sm font-semibold", capitalize && "capitalize")}>
@@ -661,6 +800,36 @@ function PreviewDetail({
       </p>
     </div>
   )
+}
+
+function PreviewLanguages({ languages }: { languages: string[] }) {
+  return (
+    <div className="col-span-2 flex min-w-0 items-start gap-2 rounded-md border bg-muted/35 px-2.5 py-2 text-left">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-background text-muted-foreground">
+        <Languages className="size-4" />
+      </span>
+      {languages.length > 0 ? (
+        <div className="flex min-w-0 flex-wrap gap-1.5">
+          {languages.map((language) => (
+            <span
+              key={language}
+              className="rounded-sm bg-background px-2 py-1 text-xs font-semibold"
+            >
+              {language}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="truncate text-sm font-semibold">Languages loading</p>
+      )}
+    </div>
+  )
+}
+
+function getGenderIcon(gender: string) {
+  if (gender === "male") return <Mars className="size-4" />
+  if (gender === "female") return <Venus className="size-4" />
+  return <VenusAndMars className="size-4" />
 }
 
 function SavedUserProfile({
@@ -719,7 +888,18 @@ function SavedUserProfile({
             <ProfileSummary label="You" value={prefs.name} />
             <ProfileSummary label="Location" value={prefs.location ?? "Not set"} />
             <ProfileSummary label="Age" value={String(prefs.age)} />
-            <ProfileSummary label="Goal" value={prefs.relationshipGoal ?? "Not set"} />
+            <ProfileSummary
+              label="Marital status"
+              value={getMaritalStatusLabel(prefs.maritalStatus)}
+            />
+            <ProfileSummary
+              label="Languages"
+              value={prefs.languages?.length ? prefs.languages.join(", ") : "Not set"}
+            />
+            <ProfileSummary
+              label="Looking for"
+              value={getRelationshipGoalLabel(prefs.relationshipGoal)}
+            />
           </div>
         </Card>
       </aside>
@@ -734,6 +914,41 @@ function ProfileSummary({ label, value }: { label: string; value: string }) {
       <p className="mt-1 text-sm font-semibold capitalize">{value}</p>
     </div>
   )
+}
+
+function getRelationshipGoalLabel(value?: string) {
+  switch (value) {
+    case "long-term":
+    case "serious":
+      return "Long-term partner"
+    case "meaningful-dates":
+      return "Meaningful dates"
+    case "friendship-first":
+    case "friendship":
+      return "Friendship first"
+    case "exploring":
+    case "open":
+      return "Still exploring"
+    case "casual":
+      return "Casual dating"
+    default:
+      return "Not set"
+  }
+}
+
+function getMaritalStatusLabel(value?: string) {
+  switch (value) {
+    case "single":
+      return "Single"
+    case "divorced":
+      return "Divorced"
+    case "separated":
+      return "Separated"
+    case "widowed":
+      return "Widowed"
+    default:
+      return "Not set"
+  }
 }
 
 function isProfileUser(user: RandomUser): user is User {
