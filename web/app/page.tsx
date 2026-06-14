@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Filter,
   HeartHandshake,
+  House,
   Languages,
   Mail,
   MapPin,
@@ -71,6 +72,9 @@ type Prefs = {
   gender: string
   age: number
   birthday?: string
+  homeCountry?: string
+  currentCountry?: string
+  currentCity?: string
   country?: string
   city?: string
   location?: string
@@ -93,6 +97,7 @@ type CountryMeta = {
   flag?: string
   flagUrl?: string
   languages: string[]
+  name?: string
 }
 
 const FILTER_GENDERS = [
@@ -119,6 +124,13 @@ function getCountryFlagUrl(
   countryMeta: Record<string, CountryMeta>
 ) {
   return countryMeta[normalizeCountryName(country)]?.flagUrl
+}
+
+function getCountryName(
+  country: string | undefined,
+  countryMeta: Record<string, CountryMeta>
+) {
+  return countryMeta[normalizeCountryName(country)]?.name ?? country
 }
 
 export default function Page() {
@@ -244,6 +256,7 @@ export default function Page() {
                 ? `https://flagcdn.com/w40/${country.cca2.toLowerCase()}.png`
                 : undefined,
               languages: uniqueLanguages,
+              name: country.name?.common,
             }
 
             if (
@@ -410,7 +423,12 @@ export default function Page() {
             <div className="order-1 lg:order-2">
               <SwipeDeck
                 getCountryFlagUrl={(user) =>
+                  getCountryFlagUrl(user.nat, countryMeta) ??
                   getCountryFlagUrl(user.location?.country, countryMeta)
+                }
+                getHomeCountry={(user) =>
+                  getCountryName(user.nat, countryMeta) ??
+                  user.location?.country
                 }
                 getLanguages={(user) =>
                   getCountryLanguages(user.location?.country, countryMeta)
@@ -721,9 +739,13 @@ function CarouselProfileCard({
   const age = String(user?.dob?.age ?? fallbackAges[fallbackIndex])
   const gender = user?.gender ?? fallbackGenders[fallbackIndex]
   const country = user?.location?.country
+  const homeCountry =
+    getCountryName(user?.nat, countryMeta) ??
+    country ??
+    "Home country"
   const countryFlagUrl =
-    getCountryFlagUrl(country, countryMeta) ??
-    getCountryFlagUrl(user?.nat, countryMeta)
+    getCountryFlagUrl(user?.nat, countryMeta) ??
+    getCountryFlagUrl(country, countryMeta)
   const languages = getCountryLanguages(country, countryMeta)
   const badgeSeed = user?.login?.uuid ?? name
   const occupation = getPreviewOccupation(badgeSeed)
@@ -850,6 +872,11 @@ function CarouselProfileCard({
               <PreviewDetail
                 icon={<BriefcaseBusiness className="size-4" />}
                 value={occupation}
+                wide
+              />
+              <PreviewDetail
+                icon={<House className="size-4" />}
+                value={homeCountry}
                 wide
               />
               <PreviewDetail
@@ -1007,8 +1034,14 @@ function SavedUserProfile({
           </Button>
         </div>
         <UserCard
-          countryFlagUrl={getCountryFlagUrl(user.location.country, countryMeta)}
+          countryFlagUrl={
+            getCountryFlagUrl(user.nat, countryMeta) ??
+            getCountryFlagUrl(user.location.country, countryMeta)
+          }
           hideProfileButton
+          homeCountry={
+            getCountryName(user.nat, countryMeta) ?? user.location.country
+          }
           languages={getCountryLanguages(user.location.country, countryMeta)}
           user={user}
         />
@@ -1024,8 +1057,12 @@ function SavedUserProfile({
           <div className="mt-4 grid gap-3">
             <ProfileSummary label="You" value={prefs.name} />
             <ProfileSummary
-              label="Location"
+              label="Current location"
               value={prefs.location ?? "Not set"}
+            />
+            <ProfileSummary
+              label="Home country"
+              value={prefs.homeCountry ?? prefs.country ?? "Not set"}
             />
             <ProfileSummary label="Age" value={String(prefs.age)} />
             <ProfileSummary
@@ -1241,7 +1278,11 @@ function FilterSheet({
           />
 
           {prefs.location ? (
-            <FilterRow label="Location" values={[prefs.location]} />
+            <FilterRow label="Current location" values={[prefs.location]} />
+          ) : null}
+
+          {prefs.homeCountry ? (
+            <FilterRow label="Home country" values={[prefs.homeCountry]} />
           ) : null}
 
           {prefs.languages?.length ? (

@@ -64,12 +64,14 @@ type DeckUser = {
 
 export default function SwipeDeck({
   getCountryFlagUrl,
+  getHomeCountry,
   getLanguages,
   users,
   onLoadMore,
   onViewProfile,
 }: {
   getCountryFlagUrl?: (user: DeckUser) => string | undefined
+  getHomeCountry?: (user: DeckUser) => string | undefined
   getLanguages?: (user: DeckUser) => string[]
   users: DeckUser[]
   onLoadMore?: () => void
@@ -278,6 +280,7 @@ export default function SwipeDeck({
                 getStackClass(item.position)
               )}
               countryFlagUrl={getCountryFlagUrl?.(item.user)}
+              homeCountry={getHomeCountry?.(item.user)}
               languages={getLanguages?.(item.user) ?? []}
               onProfileClick={() => onViewProfile?.(item.user)}
               showActions={item.position === "active"}
@@ -556,6 +559,7 @@ function HistoryDialog({
         <HistoryList
           users={historyUsers}
           getCountryFlagUrl={getCountryFlagUrl}
+          canRemoveRows={historyView === "likes"}
           onProfileClick={onProfileClick}
           onRemove={onRemove}
         />
@@ -601,11 +605,13 @@ function ClearHistoryDialog({
 }
 
 function HistoryList({
+  canRemoveRows,
   getCountryFlagUrl,
   onProfileClick,
   onRemove,
   users,
 }: {
+  canRemoveRows: boolean
   getCountryFlagUrl?: (user: User) => string | undefined
   onProfileClick: (user: User) => void
   onRemove: (user: User) => void
@@ -620,6 +626,7 @@ function HistoryList({
               <ProfileRow
                 key={`${user.login?.uuid ?? user.name.first}-${index}`}
                 countryFlagUrl={getCountryFlagUrl?.(user)}
+                canRemove={canRemoveRows}
                 onProfileClick={() => onProfileClick(user)}
                 onRemove={() => onRemove(user)}
                 user={user}
@@ -637,11 +644,13 @@ function HistoryList({
 }
 
 function ProfileRow({
+  canRemove,
   countryFlagUrl,
   onProfileClick,
   onRemove,
   user,
 }: {
+  canRemove: boolean
   countryFlagUrl?: string
   onProfileClick: () => void
   onRemove: () => void
@@ -733,16 +742,18 @@ function ProfileRow({
             {requested ? "Cancel request" : "Send request"}
           </span>
         </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          onClick={onRemove}
-          className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-          aria-label={`Remove ${name}`}
-        >
-          <Trash2 className="size-4" />
-        </Button>
+        {canRemove ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onRemove}
+            className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            aria-label={`Remove ${name}`}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        ) : null}
       </div>
     </div>
   )

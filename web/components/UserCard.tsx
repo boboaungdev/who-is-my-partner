@@ -4,6 +4,7 @@ import * as React from "react"
 import Image from "next/image"
 import {
   BriefcaseBusiness,
+  House,
   Languages,
   MapPin,
   Mars,
@@ -51,6 +52,7 @@ export default function UserCard({
   className,
   countryFlagUrl,
   hideProfileButton = false,
+  homeCountry,
   languages = [],
   onProfileClick,
   showActions = true,
@@ -59,6 +61,7 @@ export default function UserCard({
   className?: string
   countryFlagUrl?: string
   hideProfileButton?: boolean
+  homeCountry?: string
   languages?: string[]
   onProfileClick?: () => void
   showActions?: boolean
@@ -68,6 +71,7 @@ export default function UserCard({
   const location = [user.location.city, user.location.state, user.location.country]
     .filter(Boolean)
     .join(", ")
+  const displayHomeCountry = homeCountry ?? user.nat ?? user.location.country
   const username = user.login?.username
   const badgeSeed = user.login?.uuid ?? username
   const profileBadges = getProfileBadges(badgeSeed)
@@ -179,6 +183,11 @@ export default function UserCard({
             <ProfileDetail
               icon={<BriefcaseBusiness className="size-4" />}
               value={occupation}
+              wide
+            />
+            <ProfileDetail
+              icon={<House className="size-4" />}
+              value={displayHomeCountry}
               wide
             />
             <ProfileDetail

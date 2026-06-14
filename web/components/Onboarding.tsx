@@ -51,6 +51,9 @@ type Prefs = {
   gender: string
   age: number
   birthday: string
+  homeCountry: string
+  currentCountry: string
+  currentCity: string
   country: string
   city: string
   location: string
@@ -106,6 +109,9 @@ const DEFAULT_FORM: Prefs = {
   gender: "male",
   age: 0,
   birthday: "",
+  homeCountry: "",
+  currentCountry: "",
+  currentCity: "",
   country: "",
   city: "",
   location: "",
@@ -126,7 +132,9 @@ export default function Onboarding({
   const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState<Prefs>(() =>
-    initialPrefs ? { ...DEFAULT_FORM, ...initialPrefs } : getSavedOnboardingForm()
+    normalizeSavedForm(
+      initialPrefs ? { ...DEFAULT_FORM, ...initialPrefs } : getSavedOnboardingForm()
+    )
   )
   const steps = profileOnly ? PROFILE_STEPS : STEPS
   const preferencesStep = PROFILE_STEPS.length
@@ -287,20 +295,33 @@ export default function Onboarding({
     reader.readAsDataURL(file)
   }
 
-  function updateCountry(country: string) {
+  function updateHomeCountry(homeCountry: string) {
     setForm((s) => ({
       ...s,
-      country,
-      city: "",
-      location: country,
+      homeCountry,
     }))
   }
 
-  function updateCity(city: string) {
+  function updateCurrentCountry(currentCountry: string) {
     setForm((s) => ({
       ...s,
-      city,
-      location: formatSetupLocation({ ...s, city }),
+      currentCountry,
+      currentCity: "",
+      country: currentCountry,
+      city: "",
+      location: currentCountry,
+    }))
+  }
+
+  function updateCurrentCity(currentCity: string) {
+    setForm((s) => ({
+      ...s,
+      currentCity,
+      city: currentCity,
+      location: formatSetupLocation({
+        city: currentCity,
+        country: s.currentCountry || s.country,
+      }),
     }))
   }
 
@@ -349,8 +370,9 @@ export default function Onboarding({
     form.birthday.trim().length > 1 &&
     form.age >= 18
   const canContinueLocation =
-    form.country.trim().length > 1 &&
-    form.city.trim().length > 1 &&
+    form.homeCountry.trim().length > 1 &&
+    form.currentCountry.trim().length > 1 &&
+    form.currentCity.trim().length > 1 &&
     form.languages.length > 0
   const canContinueDetails =
     form.occupation.trim().length > 1 &&
@@ -460,15 +482,15 @@ export default function Onboarding({
 
                 <div className="grid gap-4">
                   <GuidedField
-                    label="Country"
+                    label="Home country"
                   >
                     <SelectControl
-                      value={form.country}
-                      onValueChange={updateCountry}
+                      value={form.homeCountry}
+                      onValueChange={updateHomeCountry}
                       placeholder={
                         locationsLoading
                           ? "Loading countries..."
-                          : "Select country"
+                          : "Select home country"
                       }
                       disabled={locationsLoading || locationOptions.length === 0}
                       items={locationOptions.map((item) => ({
@@ -480,19 +502,41 @@ export default function Onboarding({
                   </GuidedField>
 
                   <GuidedField
-                    label="City"
+                    label="Current country"
                   >
                     <SelectControl
-                      value={form.city}
-                      onValueChange={updateCity}
+                      value={form.currentCountry}
+                      onValueChange={updateCurrentCountry}
                       placeholder={
-                        form.country ? "Select city" : "Select country first"
+                        locationsLoading
+                          ? "Loading countries..."
+                          : "Select current country"
+                      }
+                      disabled={locationsLoading || locationOptions.length === 0}
+                      items={locationOptions.map((item) => ({
+                        value: item.country,
+                        label: item.country,
+                        iconUrl: getCountryFlag(item.country, countryFlags),
+                      }))}
+                    />
+                  </GuidedField>
+
+                  <GuidedField
+                    label="Current city"
+                  >
+                    <SelectControl
+                      value={form.currentCity}
+                      onValueChange={updateCurrentCity}
+                      placeholder={
+                        form.currentCountry
+                          ? "Select current city"
+                          : "Select current country first"
                       }
                       disabled={
-                        !form.country ||
-                        getCities(form.country, locationOptions).length === 0
+                        !form.currentCountry ||
+                        getCities(form.currentCountry, locationOptions).length === 0
                       }
-                      items={getCities(form.country, locationOptions).map(
+                      items={getCities(form.currentCountry, locationOptions).map(
                         (city) => ({
                           value: city,
                           label: city,
@@ -624,7 +668,7 @@ export default function Onboarding({
             )}
 
             {step === preferencesStep && !profileOnly && (
-              <div className="space-y-7">
+              <div className="space-y-5">
                 <SectionHeader
                   icon={<Heart className="size-5" />}
                   title="Match preferences"
@@ -634,13 +678,12 @@ export default function Onboarding({
                 <ChoiceGrid
                   title="Preferred gender"
                   choices={[
-                    { id: "male", label: "Men", detail: "Show male profiles" },
+                    { id: "male", label: "Men" },
                     {
                       id: "female",
                       label: "Women",
-                      detail: "Show female profiles",
                     },
-                    { id: "any", label: "Any", detail: "Keep the dashboard open" },
+                    { id: "any", label: "Any" },
                   ]}
                   selected={form.partnerGenders}
                   onToggle={(id) =>
@@ -655,17 +698,12 @@ export default function Onboarding({
                       return {
                         id: range,
                         label: "Any",
-                        detail: "Show every age range",
                       }
                     }
 
                     return {
                       id: range,
                       label: range,
-                      detail:
-                        range === "41+"
-                          ? "Experienced and established"
-                          : "Balanced discovery range",
                     }
                   })}
                   selected={form.partnerAges}
@@ -729,6 +767,25 @@ function normalizeCountryName(value?: string) {
 
 function getCountryFlag(country: string, flags: CountryFlagMap) {
   return flags[normalizeCountryName(country)]
+}
+
+function normalizeSavedForm(form: Prefs) {
+  const currentCountry = form.currentCountry || form.country
+  const currentCity = form.currentCity || form.city
+  const homeCountry = form.homeCountry || form.country || currentCountry
+
+  return {
+    ...form,
+    homeCountry,
+    currentCountry,
+    currentCity,
+    country: currentCountry,
+    city: currentCity,
+    location: formatSetupLocation({
+      city: currentCity,
+      country: currentCountry,
+    }),
+  }
 }
 
 function getDefaultPartnerGenders(gender: string) {
@@ -1253,14 +1310,14 @@ function ChoiceGrid({
   onToggle,
 }: {
   title: string
-  choices: { id: string; label: string; detail: string }[]
+  choices: { id: string; label: string }[]
   selected: string[]
   onToggle: (id: string) => void
 }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="flex flex-wrap gap-2">
         {choices.map((choice) => {
           const active = selected.includes(choice.id)
           return (
@@ -1269,26 +1326,12 @@ function ChoiceGrid({
               type="button"
               onClick={() => onToggle(choice.id)}
               className={cn(
-                "min-h-20 rounded-md border bg-background p-3 text-left shadow-xs transition hover:border-primary/40 hover:bg-muted/40",
-                active && "border-primary bg-primary/5 ring-3 ring-primary/15"
+                "inline-flex h-10 items-center gap-2 rounded-full border bg-background px-3 text-sm font-semibold shadow-xs transition hover:border-primary/40 hover:bg-muted/40",
+                active && "border-primary bg-primary text-primary-foreground"
               )}
             >
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm font-semibold">{choice.label}</span>
-                <span
-                  className={cn(
-                    "flex size-4 items-center justify-center rounded-full border",
-                    active
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "bg-muted"
-                  )}
-                >
-                  {active && <Check className="size-2.5" />}
-                </span>
-              </div>
-              <p className="mt-2 line-clamp-2 text-xs leading-4 text-muted-foreground">
-                {choice.detail}
-              </p>
+              {active ? <Check className="size-3.5" /> : null}
+              {choice.label}
             </button>
           )
         })}
