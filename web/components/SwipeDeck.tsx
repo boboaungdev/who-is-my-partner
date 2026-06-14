@@ -271,7 +271,7 @@ export default function SwipeDeck({
           </p>
         </div>
 
-        <div className="relative mx-auto h-[560px] w-full max-w-[560px] overflow-hidden sm:h-[590px]">
+        <div className="relative mx-auto h-[620px] w-full max-w-[560px] overflow-hidden sm:h-[650px]">
           {stackUsers.map((item) => (
             <UserCard
               key={`${getProfileKey(item.user)}-${item.position}`}

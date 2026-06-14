@@ -4,6 +4,7 @@ import * as React from "react"
 import Image from "next/image"
 import {
   BriefcaseBusiness,
+  HeartHandshake,
   House,
   Languages,
   MapPin,
@@ -18,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button"
 import ProfileStatusIcons from "@/components/ProfileStatusIcons"
 import { getProfileBadges } from "@/lib/profile-badges"
+import { getProfileLookingFor } from "@/lib/profile-looking-for"
 import { cn } from "@/lib/utils"
 import {
   getProfileKey,
@@ -77,6 +79,7 @@ export default function UserCard({
   const profileBadges = getProfileBadges(badgeSeed)
   const age = user.dob?.age ? `${user.dob.age} yrs` : "Age hidden"
   const occupation = getPreviewOccupation(badgeSeed ?? name)
+  const lookingFor = getProfileLookingFor(badgeSeed ?? name)
   const profileKey = getProfileKey(user)
   const [requestedProfiles, setRequestedProfiles] = React.useState<string[]>([])
   const requested = requestedProfiles.includes(profileKey)
@@ -193,6 +196,11 @@ export default function UserCard({
             <ProfileDetail
               icon={<MapPin className="size-4" />}
               value={location}
+              wide
+            />
+            <ProfileDetail
+              icon={<HeartHandshake className="size-4" />}
+              value={`Looking for ${lookingFor.toLowerCase()}`}
               wide
             />
             <ProfileLanguages languages={languages} />

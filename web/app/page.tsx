@@ -7,6 +7,7 @@ import {
   BriefcaseBusiness,
   CheckCircle2,
   Filter,
+  Globe2,
   HeartHandshake,
   House,
   Languages,
@@ -27,6 +28,13 @@ import UserCard, { type User } from "@/components/UserCard"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Sheet,
@@ -38,10 +46,12 @@ import {
 } from "@/components/ui/sheet"
 import {
   APP_NAME,
+  COUNTRY_CITY_API_URL,
   COUNTRY_LANGUAGE_API_URL,
   RANDOM_USER_BASE_URL,
 } from "@/constants"
 import { getProfileBadges } from "@/lib/profile-badges"
+import { getProfileLookingFor } from "@/lib/profile-looking-for"
 import { cn } from "@/lib/utils"
 
 type RandomUser = {
@@ -93,6 +103,11 @@ type CountryLanguageData = {
   languages?: Record<string, string>
 }
 
+type CountryCityOption = {
+  country: string
+  cities: string[]
+}
+
 type CountryMeta = {
   flag?: string
   flagUrl?: string
@@ -106,6 +121,37 @@ const FILTER_GENDERS = [
   { value: "any", label: "Any" },
 ]
 const FILTER_AGES = ["any", "18-24", "25-30", "31-40", "41+"]
+const WORLDWIDE = "__worldwide__"
+const SAME_AS_MY_COUNTRY = "__same_as_my_country__"
+const SAME_AS_CURRENT_LOCATION = "__same_as_current_location__"
+const DEMO_AGES = [
+  18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 35, 38, 40, 41,
+  46, 52,
+]
+
+function getDemoBirthdayForAge(age: number) {
+  const today = new Date()
+  const birthday = new Date(
+    today.getFullYear() - age,
+    today.getMonth(),
+    today.getDate()
+  )
+
+  return birthday.toISOString()
+}
+
+function withDemoAge(user: RandomUser, index: number): RandomUser {
+  const age = DEMO_AGES[index % DEMO_AGES.length]
+
+  return {
+    ...user,
+    dob: {
+      ...user.dob,
+      age,
+      date: getDemoBirthdayForAge(age),
+    },
+  }
+}
 
 function normalizeCountryName(value?: string) {
   return (value ?? "").trim().toLowerCase()
@@ -130,7 +176,68 @@ function getCountryName(
   country: string | undefined,
   countryMeta: Record<string, CountryMeta>
 ) {
+  if (isWorldwide(country)) return "Worldwide"
   return countryMeta[normalizeCountryName(country)]?.name ?? country
+}
+
+function isWorldwide(value?: string) {
+  return value === WORLDWIDE
+}
+
+function getCities(country: string | undefined, options: CountryCityOption[]) {
+  if (!country || isWorldwide(country)) return []
+  return options.find((item) => item.country === country)?.cities ?? []
+}
+
+function getAgesForRange(range: string) {
+  if (range === "41+") return [41, 46, 52]
+  const [min, max] = range.split("-").map(Number)
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return []
+
+  return Array.from({ length: max - min + 1 }, (_, index) => min + index)
+}
+
+function getFilteredAgePool(prefs: Prefs) {
+  const ranges = prefs.partnerAges?.filter((range) => range !== "any") ?? []
+  const ages = ranges.flatMap(getAgesForRange)
+  return ages.length ? ages : []
+}
+
+function shapeUserForFilters(
+  user: RandomUser,
+  index: number,
+  prefs: Prefs,
+  locationOptions: CountryCityOption[]
+): RandomUser {
+  const agePool = getFilteredAgePool(prefs)
+  const age = agePool.length ? agePool[index % agePool.length] : user.dob?.age
+  const currentCountry = isWorldwide(prefs.currentCountry || prefs.country)
+    ? undefined
+    : prefs.currentCountry || prefs.country
+  const homeCountry = isWorldwide(prefs.homeCountry)
+    ? undefined
+    : prefs.homeCountry
+  const cities = getCities(currentCountry, locationOptions)
+  const currentCity = currentCountry
+    ? prefs.currentCity || prefs.city || cities[index % cities.length]
+    : undefined
+
+  return {
+    ...user,
+    nat: homeCountry || user.nat,
+    dob: age
+      ? {
+          ...user.dob,
+          age,
+          date: getDemoBirthdayForAge(age),
+        }
+      : user.dob,
+    location: {
+      ...user.location,
+      ...(currentCountry ? { country: currentCountry } : {}),
+      ...(currentCity ? { city: currentCity } : {}),
+    },
+  }
 }
 
 export default function Page() {
@@ -143,6 +250,10 @@ export default function Page() {
   const [countryMeta, setCountryMeta] = useState<Record<string, CountryMeta>>(
     {}
   )
+  const [locationOptions, setLocationOptions] = useState<CountryCityOption[]>(
+    []
+  )
+  const [locationsLoading, setLocationsLoading] = useState(true)
 
   function goHome() {
     if (prefs) {
@@ -195,7 +306,15 @@ export default function Page() {
         `${RANDOM_USER_BASE_URL}/api/?results=${count}&inc=gender,name,location,picture,dob,registered,email,login,phone,cell,nat&noinfo`
       )
       const data = await res.json()
-      setUsers((prev) => [...prev, ...(data.results || [])])
+      const fetchedUsers: RandomUser[] = Array.isArray(data.results)
+        ? data.results
+        : []
+      setUsers((prev) => [
+        ...prev,
+        ...fetchedUsers.map((user, index) =>
+          withDemoAge(user, prev.length + index)
+        ),
+      ])
     } catch {
       // ignore demo API failures
     } finally {
@@ -234,6 +353,43 @@ export default function Page() {
         // ignore
       }
     }, 0)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadLocations() {
+      setLocationsLoading(true)
+      try {
+        const response = await fetch(COUNTRY_CITY_API_URL)
+        const payload = await response.json()
+        const data = Array.isArray(payload.data) ? payload.data : []
+        const options = data
+          .filter(
+            (item: CountryCityOption) =>
+              typeof item.country === "string" && Array.isArray(item.cities)
+          )
+          .map((item: CountryCityOption) => ({
+            country: item.country,
+            cities: item.cities.filter((city) => typeof city === "string"),
+          }))
+          .sort((a: CountryCityOption, b: CountryCityOption) =>
+            a.country.localeCompare(b.country)
+          )
+
+        if (!cancelled) setLocationOptions(options)
+      } catch {
+        if (!cancelled) setLocationOptions([])
+      } finally {
+        if (!cancelled) setLocationsLoading(false)
+      }
+    }
+
+    void loadLocations()
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -334,6 +490,13 @@ export default function Page() {
     })
   }, [prefs, users])
 
+  const displayUsers = useMemo(() => {
+    if (!prefs) return filteredUsers
+    return filteredUsers.map((user, index) =>
+      shapeUserForFilters(user, index, prefs, locationOptions)
+    )
+  }, [filteredUsers, locationOptions, prefs])
+
   const signedUserImage = React.useMemo(() => {
     if (!prefs) return undefined
     if (prefs.avatar) return prefs.avatar
@@ -414,7 +577,10 @@ export default function Page() {
           <div className="grid gap-6 lg:grid-cols-[160px_minmax(0,1fr)]">
             <aside className="order-1 lg:order-1">
               <FilterSheet
-                matchingCount={filteredUsers.length}
+                countryMeta={countryMeta}
+                locationOptions={locationOptions}
+                locationsLoading={locationsLoading}
+                matchingCount={displayUsers.length}
                 onPrefsChange={updatePrefs}
                 prefs={prefs}
               />
@@ -433,7 +599,7 @@ export default function Page() {
                 getLanguages={(user) =>
                   getCountryLanguages(user.location?.country, countryMeta)
                 }
-                users={filteredUsers}
+                users={displayUsers}
                 onLoadMore={() => fetchUsers(8)}
                 onViewProfile={(user) => {
                   setSelectedUser(user)
@@ -693,7 +859,7 @@ function HeroPreview({
   })
   return (
     <div className="relative mx-auto w-full max-w-xl">
-      <div className="relative h-[470px] overflow-hidden sm:h-[490px]">
+      <div className="relative h-[520px] overflow-hidden sm:h-[540px]">
         {visibleCards.map((user, index) => (
           <CarouselProfileCard
             key={user?.login?.uuid ?? index}
@@ -749,6 +915,7 @@ function CarouselProfileCard({
   const languages = getCountryLanguages(country, countryMeta)
   const badgeSeed = user?.login?.uuid ?? name
   const occupation = getPreviewOccupation(badgeSeed)
+  const lookingFor = getProfileLookingFor(badgeSeed)
   const profileBadges = getProfileBadges(badgeSeed)
   const stackClasses = [
     "left-[6%] z-10 translate-y-4 rotate-[-3deg] scale-[0.92] opacity-45",
@@ -759,7 +926,7 @@ function CarouselProfileCard({
   return (
     <Card
       className={cn(
-        "absolute top-0 h-[455px] w-[min(21rem,78vw)] overflow-hidden border-border/80 p-0 transition-all duration-700 ease-out motion-safe:will-change-transform sm:h-[475px]",
+        "absolute top-0 h-[505px] w-[min(21rem,78vw)] overflow-hidden border-border/80 p-0 transition-all duration-700 ease-out motion-safe:will-change-transform sm:h-[525px]",
         stackClasses[fallbackIndex],
         active
           ? "animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 shadow-xl shadow-primary/5"
@@ -882,6 +1049,11 @@ function CarouselProfileCard({
               <PreviewDetail
                 icon={<MapPin className="size-4" />}
                 value={location}
+                wide
+              />
+              <PreviewDetail
+                icon={<HeartHandshake className="size-4" />}
+                value={`Looking for ${lookingFor.toLowerCase()}`}
                 wide
               />
               <PreviewLanguages languages={languages} />
@@ -1204,16 +1376,60 @@ function LoadingState() {
 }
 
 function FilterSheet({
+  countryMeta,
+  locationOptions,
+  locationsLoading,
   matchingCount,
   onPrefsChange,
   prefs,
 }: {
+  countryMeta: Record<string, CountryMeta>
+  locationOptions: CountryCityOption[]
+  locationsLoading: boolean
   matchingCount: number
   onPrefsChange: (prefs: Prefs) => void
   prefs: Prefs
 }) {
+  const countryItems = locationOptions.map((item) => ({
+    value: item.country,
+    label: item.country,
+    iconUrl: getCountryFlagUrl(item.country, countryMeta),
+  }))
+
   function update<K extends keyof Prefs>(key: K, value: Prefs[K]) {
     onPrefsChange({ ...prefs, [key]: value })
+  }
+
+  function updateHomeCountry(value: string) {
+    const homeCountry =
+      value === WORLDWIDE
+        ? WORLDWIDE
+        : value === SAME_AS_CURRENT_LOCATION
+        ? prefs.currentCountry || prefs.country || prefs.homeCountry || ""
+        : value
+
+    onPrefsChange({
+      ...prefs,
+      homeCountry,
+    })
+  }
+
+  function updateCurrentCountry(value: string) {
+    const currentCountry =
+      value === WORLDWIDE
+        ? WORLDWIDE
+        : value === SAME_AS_MY_COUNTRY
+        ? prefs.homeCountry || prefs.currentCountry || prefs.country || ""
+        : value
+
+    onPrefsChange({
+      ...prefs,
+      currentCountry,
+      currentCity: "",
+      country: currentCountry,
+      city: "",
+      location: currentCountry === WORLDWIDE ? "Worldwide" : currentCountry,
+    })
   }
 
   function toggleFilter(values: string[], value: string) {
@@ -1277,36 +1493,109 @@ function FilterSheet({
             }
           />
 
-          {prefs.location ? (
-            <FilterRow label="Current location" values={[prefs.location]} />
-          ) : null}
+          <CountrySelectField
+            disabled={locationsLoading || countryItems.length === 0}
+            items={[
+              {
+                value: WORLDWIDE,
+                label: "Worldwide",
+                icon: <Globe2 className="size-4" />,
+              },
+              {
+                value: SAME_AS_MY_COUNTRY,
+                label: "Same as my country",
+                iconUrl: getCountryFlagUrl(prefs.homeCountry, countryMeta),
+              },
+              ...countryItems,
+            ]}
+            label="Current location"
+            onValueChange={updateCurrentCountry}
+            placeholder={
+              locationsLoading ? "Loading countries..." : "Select current country"
+            }
+            value={prefs.currentCountry || prefs.country || WORLDWIDE}
+          />
 
-          {prefs.homeCountry ? (
-            <FilterRow label="Home country" values={[prefs.homeCountry]} />
-          ) : null}
+          <CountrySelectField
+            disabled={locationsLoading || countryItems.length === 0}
+            items={[
+              {
+                value: WORLDWIDE,
+                label: "Worldwide",
+                icon: <Globe2 className="size-4" />,
+              },
+              {
+                value: SAME_AS_CURRENT_LOCATION,
+                label: "Same as current location",
+                iconUrl: getCountryFlagUrl(
+                  prefs.currentCountry || prefs.country,
+                  countryMeta
+                ),
+              },
+              ...countryItems,
+            ]}
+            label="Home country"
+            onValueChange={updateHomeCountry}
+            placeholder={
+              locationsLoading ? "Loading countries..." : "Select home country"
+            }
+            value={prefs.homeCountry || WORLDWIDE}
+          />
 
-          {prefs.languages?.length ? (
-            <FilterRow label="Languages" values={prefs.languages} />
-          ) : null}
-
-          <div className="rounded-md border bg-muted/30 p-3">
-            <p className="text-xs font-medium text-muted-foreground">You</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {[
-                `${prefs.age}`,
-                prefs.gender,
-                getMaritalStatusLabel(prefs.maritalStatus),
-                getRelationshipGoalLabel(prefs.relationshipGoal),
-              ].map((value) => (
-                <Badge key={value} variant="secondary" className="capitalize">
-                  {value}
-                </Badge>
-              ))}
-            </div>
-          </div>
         </div>
       </SheetContent>
     </Sheet>
+  )
+}
+
+function CountrySelectField({
+  disabled,
+  items,
+  label,
+  onValueChange,
+  placeholder,
+  value,
+}: {
+  disabled?: boolean
+  items: {
+    value: string
+    label: string
+    icon?: React.ReactNode
+    iconUrl?: string
+  }[]
+  label: string
+  onValueChange: (value: string) => void
+  placeholder: string
+  value: string
+}) {
+  return (
+    <div>
+      <p className="mb-2 text-xs font-medium text-muted-foreground">{label}</p>
+      <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+        <SelectTrigger>
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              <span className="flex min-w-0 items-center gap-2">
+                {item.iconUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={item.iconUrl}
+                    alt=""
+                    className="h-4 w-6 shrink-0 rounded-[2px] object-cover shadow-sm"
+                  />
+                ) : (
+                  item.icon
+                )}
+                <span className="truncate">{item.label}</span>
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   )
 }
 
