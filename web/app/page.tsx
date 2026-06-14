@@ -12,7 +12,6 @@ import {
   Filter,
   HeartHandshake,
   Languages,
-  Loader2,
   MapPin,
   Mars,
   Sparkles,
@@ -30,6 +29,7 @@ import UserCard, { type User } from "@/components/UserCard"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Sheet,
   SheetContent,
@@ -98,6 +98,13 @@ type CountryMeta = {
   languages: string[]
 }
 
+const FILTER_GENDERS = [
+  { value: "male", label: "Men" },
+  { value: "female", label: "Women" },
+  { value: "any", label: "Any" },
+]
+const FILTER_AGES = ["any", "18-24", "25-30", "31-40", "41+"]
+
 function normalizeCountryName(value?: string) {
   return (value ?? "").trim().toLowerCase()
 }
@@ -127,6 +134,11 @@ export default function Page() {
   const [countryMeta, setCountryMeta] = useState<Record<string, CountryMeta>>({})
 
   function goHome() {
+    if (prefs) {
+      goDeck()
+      return
+    }
+
     setView("home")
     router.push("/")
   }
@@ -194,9 +206,9 @@ export default function Page() {
 
         if (savedPrefs) {
           setPrefs(savedPrefs)
-          const nextView = view ?? "deck"
+          const nextView = !view || view === "home" ? "deck" : view
           setView(nextView)
-          if (!view) setViewQuery("deck", "replace")
+          if (!view || view === "home") setViewQuery("deck", "replace")
         } else {
           setPrefs(null)
           const nextView = view === "setup" ? "setup" : "home"
@@ -265,7 +277,7 @@ export default function Page() {
   useEffect(() => {
     function syncFromUrl() {
       const nextView = getViewQuery()
-      setView(nextView ?? (prefs ? "deck" : "home"))
+      setView(prefs && (!nextView || nextView === "home") ? "deck" : nextView ?? "home")
     }
 
     window.addEventListener("popstate", syncFromUrl)
@@ -307,6 +319,15 @@ export default function Page() {
     return found?.picture?.large
   }, [prefs, users])
 
+  function updatePrefs(nextPrefs: Prefs) {
+    setPrefs(nextPrefs)
+    try {
+      localStorage.setItem("wimp:onboard:v2", JSON.stringify(nextPrefs))
+    } catch {
+      // ignore
+    }
+  }
+
   return (
     <div className="min-h-svh bg-background text-foreground">
       <NavBar
@@ -323,7 +344,8 @@ export default function Page() {
           }
           setPrefs(null)
           setSelectedUser(null)
-          goHome()
+          setView("home")
+          clearViewQuery()
           setUsers([])
           void fetchUsers(12)
         }}
@@ -368,6 +390,7 @@ export default function Page() {
             <aside className="order-2 space-y-4 lg:order-1">
               <FilterSheet
                 matchingCount={filteredUsers.length}
+                onPrefsChange={updatePrefs}
                 prefs={prefs}
               />
             </aside>
@@ -496,7 +519,7 @@ function MarketingHome({
           </h1>
           <p className="mt-5 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
             Explore partner matches with clean preferences, real profile-style
-            data, and a focused deck experience built for quick discovery.
+            data, and a focused dashboard experience built for quick discovery.
           </p>
 
           <div className="mt-7 flex flex-col gap-3 sm:flex-row">
@@ -526,14 +549,14 @@ function MarketingHome({
       <section className="grid gap-4 md:grid-cols-3">
         <LandingFeature
           title="Set your profile"
-          detail="Choose your details, country, city, birthday, and optional avatar before the deck appears."
+          detail="Choose your details, country, city, birthday, and optional avatar before the dashboard appears."
         />
         <LandingFeature
           title="Tune preferences"
           detail="Pick the partner ages and genders you want the matching flow to respect."
         />
         <LandingFeature
-          title="Browse the deck"
+          title="Browse the dashboard"
           detail="Review real-looking profiles with photos, location, contact details, and matching context."
         />
       </section>
@@ -847,10 +870,10 @@ function SavedUserProfile({
         </div>
         <h1 className="mt-4 text-xl font-semibold">Profile unavailable</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Pick another profile from the discovery deck.
+          Pick another profile from the discovery dashboard.
         </p>
         <Button onClick={onBack} className="mt-5">
-          Back to deck
+          Back to dashboard
         </Button>
       </Card>
     )
@@ -869,7 +892,7 @@ function SavedUserProfile({
             <h1 className="text-2xl font-semibold">{name}</h1>
           </div>
           <Button variant="outline" onClick={onBack}>
-            Back to deck
+            Back to dashboard
           </Button>
         </div>
         <UserCard
@@ -981,23 +1004,81 @@ function LandingFeature({
 
 function LoadingState() {
   return (
-    <Card className="mx-auto flex min-h-[420px] max-w-xl flex-col items-center justify-center text-center">
-      <Loader2 className="size-8 animate-spin text-primary" />
-      <h2 className="mt-4 text-xl font-semibold">Building your deck</h2>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Pulling fresh profiles and applying your preferences.
-      </p>
-    </Card>
+    <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+      <aside className="order-2 space-y-4 lg:order-1">
+        <Skeleton className="h-16 w-full" />
+        <div className="grid grid-cols-2 gap-3 lg:hidden">
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
+        </div>
+      </aside>
+
+      <section className="order-1 mx-auto w-full max-w-[480px] space-y-4 lg:order-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-7 w-56" />
+          </div>
+          <Skeleton className="h-7 w-16 rounded-full" />
+        </div>
+
+        <Skeleton className="h-2 w-full rounded-full" />
+
+        <Card className="overflow-hidden p-0">
+          <Skeleton className="h-32 w-full rounded-none" />
+          <div className="-mt-16 flex flex-col items-center p-5 pt-0 text-center">
+            <Skeleton className="size-36 rounded-full border-4 border-background sm:size-40" />
+            <Skeleton className="mt-5 h-7 w-52" />
+            <Skeleton className="mt-2 h-4 w-64 max-w-full" />
+
+            <div className="mt-5 grid w-full gap-3 sm:grid-cols-2">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+
+            <Skeleton className="mt-4 h-16 w-full" />
+            <div className="mt-4 grid w-full gap-2 sm:grid-cols-2">
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+          </div>
+        </Card>
+
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="size-10" />
+          <Skeleton className="h-12 w-full" />
+        </div>
+      </section>
+    </div>
   )
 }
 
 function FilterSheet({
   matchingCount,
+  onPrefsChange,
   prefs,
 }: {
   matchingCount: number
+  onPrefsChange: (prefs: Prefs) => void
   prefs: Prefs
 }) {
+  function update<K extends keyof Prefs>(key: K, value: Prefs[K]) {
+    onPrefsChange({ ...prefs, [key]: value })
+  }
+
+  function toggleFilter(values: string[], value: string) {
+    if (value === "any") return values.includes("any") ? [] : ["any"]
+    const next = values.filter((item) => item !== "any")
+    const selected = next.includes(value)
+      ? next.filter((item) => item !== value)
+      : [...next, value]
+
+    return selected.length ? selected : ["any"]
+  }
+
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -1021,7 +1102,7 @@ function FilterSheet({
         <SheetHeader>
           <SheetTitle>Your filters</SheetTitle>
           <SheetDescription>
-            {matchingCount} matching profiles in the current deck.
+            {matchingCount} matching profiles in the current dashboard.
           </SheetDescription>
         </SheetHeader>
 
@@ -1029,8 +1110,28 @@ function FilterSheet({
           {prefs.location ? (
             <FilterRow label="Location" values={[prefs.location]} />
           ) : null}
-          <FilterRow label="Gender" values={prefs.partnerGenders} />
-          <FilterRow label="Age" values={prefs.partnerAges} />
+          <EditableFilterGroup
+            label="Gender"
+            options={FILTER_GENDERS}
+            selected={prefs.partnerGenders}
+            onToggle={(value) =>
+              update(
+                "partnerGenders",
+                toggleFilter(prefs.partnerGenders, value)
+              )
+            }
+          />
+          <EditableFilterGroup
+            label="Age"
+            options={FILTER_AGES.map((value) => ({
+              value,
+              label: value === "any" ? "Any" : value,
+            }))}
+            selected={prefs.partnerAges}
+            onToggle={(value) =>
+              update("partnerAges", toggleFilter(prefs.partnerAges, value))
+            }
+          />
           <FilterRow
             label="You"
             values={[
@@ -1046,6 +1147,43 @@ function FilterSheet({
         </div>
       </SheetContent>
     </Sheet>
+  )
+}
+
+function EditableFilterGroup({
+  label,
+  onToggle,
+  options,
+  selected,
+}: {
+  label: string
+  onToggle: (value: string) => void
+  options: { value: string; label: string }[]
+  selected: string[]
+}) {
+  return (
+    <div>
+      <p className="mb-2 text-xs font-medium text-muted-foreground">{label}</p>
+      <div className="grid grid-cols-2 gap-2">
+        {options.map((option) => {
+          const active = selected.includes(option.value)
+
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onToggle(option.value)}
+              className={cn(
+                "rounded-md border bg-background px-3 py-2 text-left text-sm font-medium capitalize transition hover:bg-muted",
+                active && "border-primary bg-primary/10 text-primary"
+              )}
+            >
+              {option.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 

@@ -132,7 +132,7 @@ export default function SwipeDeck({
         </div>
         <h2 className="mt-4 text-xl font-semibold">No profiles available</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Try opening your preferences and widening the deck.
+          Try opening your preferences and widening the dashboard.
         </p>
         <Button onClick={onLoadMore} className="mt-5">
           Load more
@@ -149,7 +149,7 @@ export default function SwipeDeck({
             <p className="text-sm font-medium text-muted-foreground">
               Profile {idx + 1} of {safeUsers.length}
             </p>
-            <h1 className="text-2xl font-semibold">Your curated deck</h1>
+            <h1 className="text-2xl font-semibold">Your curated dashboard</h1>
           </div>
           <Badge variant="warm" className="gap-1">
             <Sparkles className="size-3" />

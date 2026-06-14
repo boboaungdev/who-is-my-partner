@@ -16,6 +16,9 @@ const fontMono = Geist_Mono({
 export const metadata: Metadata = {
   title: APP_NAME,
   description: "A polished UI prototype for discovering partner matches.",
+  icons: {
+    icon: "/icon.svg",
+  },
 }
 
 export default function RootLayout({

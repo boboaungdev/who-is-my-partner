@@ -76,11 +76,17 @@ type CountryCityOption = {
 }
 
 type RestCountry = {
+  cca2?: string
+  name?: { common?: string; official?: string }
   languages?: Record<string, string>
 }
 
+type CountryFlagMap = Record<string, string>
+type LanguageFlagMap = Record<string, string>
+
 const AGE_RANGES = ["any", "18-24", "25-30", "31-40", "41+"]
-const STEPS = ["Profile", "Preferences"]
+const PROFILE_STEPS = ["Identity", "Location", "Details"]
+const STEPS = [...PROFILE_STEPS, "Preferences"]
 const RELATIONSHIP_GOALS = [
   { value: "long-term", label: "Long-term partner" },
   { value: "meaningful-dates", label: "Meaningful dates" },
@@ -98,7 +104,7 @@ const MAX_LANGUAGES = 5
 const DEFAULT_FORM: Prefs = {
   name: "",
   avatar: "",
-  gender: "",
+  gender: "male",
   age: 0,
   birthday: "",
   country: "",
@@ -107,7 +113,7 @@ const DEFAULT_FORM: Prefs = {
   occupation: "",
   maritalStatus: "single",
   languages: [],
-  relationshipGoal: "",
+  relationshipGoal: "long-term",
   partnerGenders: ["female"],
   partnerAges: ["any"],
 }
@@ -123,13 +129,16 @@ export default function Onboarding({
   const [form, setForm] = useState<Prefs>(() =>
     initialPrefs ? { ...DEFAULT_FORM, ...initialPrefs } : getSavedOnboardingForm()
   )
-  const steps = profileOnly ? ["Profile"] : STEPS
+  const steps = profileOnly ? PROFILE_STEPS : STEPS
+  const preferencesStep = PROFILE_STEPS.length
   const [locationOptions, setLocationOptions] = useState<CountryCityOption[]>(
     []
   )
   const [locationsLoading, setLocationsLoading] = useState(true)
   const [locationsError, setLocationsError] = useState("")
   const [languageOptions, setLanguageOptions] = useState<string[]>([])
+  const [countryFlags, setCountryFlags] = useState<CountryFlagMap>({})
+  const [languageFlags, setLanguageFlags] = useState<LanguageFlagMap>({})
   const [languagesLoading, setLanguagesLoading] = useState(false)
   const [languagesError, setLanguagesError] = useState("")
 
@@ -194,6 +203,33 @@ export default function Onboarding({
         const response = await fetch(COUNTRY_LANGUAGE_API_URL)
         const payload = await response.json()
         const countries = Array.isArray(payload) ? payload : []
+        const flagMap = countries.reduce(
+          (acc: CountryFlagMap, country: RestCountry) => {
+            if (!country.cca2) return acc
+            const flagUrl = `https://flagcdn.com/w40/${country.cca2.toLowerCase()}.png`
+            if (country.name?.common) {
+              acc[normalizeCountryName(country.name.common)] = flagUrl
+            }
+            if (country.name?.official) {
+              acc[normalizeCountryName(country.name.official)] = flagUrl
+            }
+            return acc
+          },
+          {}
+        )
+        const languageFlagMap = countries.reduce(
+          (acc: LanguageFlagMap, country: RestCountry) => {
+            if (!country.cca2) return acc
+            const flagUrl = `https://flagcdn.com/w40/${country.cca2.toLowerCase()}.png`
+            Object.values(country.languages ?? {}).forEach((language) => {
+              if (typeof language === "string" && !acc[language]) {
+                acc[language] = flagUrl
+              }
+            })
+            return acc
+          },
+          {}
+        )
         const languages = countries.flatMap((country: RestCountry) =>
           Object.values(country.languages ?? {})
         ) as string[]
@@ -203,6 +239,8 @@ export default function Onboarding({
 
         if (!cancelled) {
           setLanguageOptions(uniqueLanguages)
+          setCountryFlags(flagMap)
+          setLanguageFlags(languageFlagMap)
           if (uniqueLanguages.length === 0) {
             setLanguagesError("No languages found.")
           }
@@ -210,6 +248,8 @@ export default function Onboarding({
       } catch {
         if (!cancelled) {
           setLanguageOptions([])
+          setCountryFlags({})
+          setLanguageFlags({})
           setLanguagesError("Could not load languages.")
         }
       } finally {
@@ -296,16 +336,26 @@ export default function Onboarding({
   }
 
   const progress = ((step + 1) / steps.length) * 100
+  const canContinueIdentity =
+    form.name.trim().length > 1 &&
+    form.gender.trim().length > 1 &&
+    form.birthday.trim().length > 1 &&
+    form.age >= 18
+  const canContinueLocation =
+    form.country.trim().length > 1 && form.city.trim().length > 1
+  const canContinueDetails =
+    form.occupation.trim().length > 1 &&
+    form.relationshipGoal.trim().length > 1
+  const canContinuePreferences =
+    form.partnerGenders.length > 0 && form.partnerAges.length > 0
   const canContinue =
     step === 0
-      ? form.name.trim().length > 1 &&
-        form.gender.trim().length > 1 &&
-        form.birthday.trim().length > 1 &&
-        form.age >= 18 &&
-        form.country.trim().length > 1 &&
-        form.city.trim().length > 1 &&
-        form.occupation.trim().length > 1
-      : form.partnerGenders.length > 0 && form.partnerAges.length > 0
+      ? canContinueIdentity
+      : step === 1
+        ? canContinueLocation
+        : step === 2
+          ? canContinueDetails
+          : canContinuePreferences
 
   return (
     <Card className="overflow-hidden p-0">
@@ -341,29 +391,42 @@ export default function Onboarding({
               <div className="space-y-5 sm:space-y-6">
                 <SectionHeader
                   icon={<User className="size-5" />}
-                  title="Your details"
-                  description="This is the profile information used around the app."
+                  title="Start with you"
+                  description="Add the basics first. The next screens will ask for location and relationship details."
                 />
 
-                <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
-                  <div className="sm:col-span-2">
+                <div className="grid gap-4">
+                  <GuidedField
+                    label="Profile photo"
+                  >
                     <AvatarPicker
                       name={form.name}
                       avatar={form.avatar}
                       onAvatarChange={updateAvatar}
                       onAvatarRemove={() => update("avatar", "")}
                     />
-                  </div>
+                  </GuidedField>
 
-                  <Field label="Name" className="sm:col-span-2">
+                  <GuidedField
+                    label="Name"
+                  >
                     <Input
                       value={form.name}
                       placeholder="Alex Morgan"
                       onChange={(e) => update("name", e.target.value)}
                     />
-                  </Field>
+                  </GuidedField>
 
-                  <Field label="Birthday">
+                  <GuidedField label="Gender">
+                    <GenderToggle
+                      value={form.gender}
+                      onValueChange={(value) => update("gender", value)}
+                    />
+                  </GuidedField>
+
+                  <GuidedField
+                    label="Birthday"
+                  >
                     <BirthdayPicker
                       value={form.birthday}
                       onValueChange={updateBirthday}
@@ -373,24 +436,23 @@ export default function Onboarding({
                         You must be at least 18 to continue.
                       </p>
                     ) : null}
-                  </Field>
+                  </GuidedField>
+                </div>
+              </div>
+            )}
 
-                  <Field label="Marital status">
-                    <SelectControl
-                      value={form.maritalStatus}
-                      onValueChange={(value) => update("maritalStatus", value)}
-                      items={MARITAL_STATUSES}
-                    />
-                  </Field>
+            {step === 1 && (
+              <div className="space-y-5 sm:space-y-6">
+                <SectionHeader
+                  icon={<HeartHandshake className="size-5" />}
+                  title="Where you are"
+                  description="Choose your location and the languages you want visible on your profile."
+                />
 
-                  <Field label="Gender" className="sm:col-span-2">
-                    <GenderToggle
-                      value={form.gender}
-                      onValueChange={(value) => update("gender", value)}
-                    />
-                  </Field>
-
-                  <Field label="Country">
+                <div className="grid gap-4">
+                  <GuidedField
+                    label="Country"
+                  >
                     <SelectControl
                       value={form.country}
                       onValueChange={updateCountry}
@@ -403,11 +465,14 @@ export default function Onboarding({
                       items={locationOptions.map((item) => ({
                         value: item.country,
                         label: item.country,
+                        iconUrl: getCountryFlag(item.country, countryFlags),
                       }))}
                     />
-                  </Field>
+                  </GuidedField>
 
-                  <Field label="City">
+                  <GuidedField
+                    label="City"
+                  >
                     <SelectControl
                       value={form.city}
                       onValueChange={updateCity}
@@ -425,15 +490,17 @@ export default function Onboarding({
                         })
                       )}
                     />
-                  </Field>
+                  </GuidedField>
 
                   {locationsError ? (
-                    <p className="text-sm text-destructive sm:col-span-2">
+                    <p className="text-sm text-destructive">
                       {locationsError}
                     </p>
                   ) : null}
 
-                  <Field label="Languages" className="sm:col-span-2">
+                  <GuidedField
+                    label="Languages"
+                  >
                     {languagesLoading ? (
                       <p className="text-sm text-muted-foreground">
                         Loading languages...
@@ -442,6 +509,7 @@ export default function Onboarding({
                       <div className="space-y-2.5">
                         <LanguagePicker
                           options={languageOptions}
+                          flagMap={languageFlags}
                           selected={form.languages}
                           maxSelected={MAX_LANGUAGES}
                           onToggle={(language) =>
@@ -463,6 +531,14 @@ export default function Onboarding({
                                 className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/15"
                                 aria-label={`Remove ${language}`}
                               >
+                                {languageFlags[language] ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={languageFlags[language]}
+                                    alt=""
+                                    className="h-3.5 w-5 rounded-[2px] object-cover shadow-sm"
+                                  />
+                                ) : null}
                                 {language}
                                 <X className="size-3.5" />
                               </button>
@@ -484,21 +560,33 @@ export default function Onboarding({
                         {languagesError}
                       </p>
                     ) : null}
-                  </Field>
+                  </GuidedField>
+                </div>
+              </div>
+            )}
 
-                  <Field label="Occupation">
-                    <div className="relative">
-                      <BriefcaseBusiness className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        value={form.occupation}
-                        placeholder="Designer, developer..."
-                        onChange={(e) => update("occupation", e.target.value)}
-                        className="pl-9"
-                      />
-                    </div>
-                  </Field>
+            {step === 2 && (
+              <div className="space-y-5 sm:space-y-6">
+                <SectionHeader
+                  icon={<BriefcaseBusiness className="size-5" />}
+                  title="Your relationship details"
+                  description="Finish your profile with status, intent, and occupation."
+                />
 
-                  <Field label="Looking for">
+                <div className="grid gap-4">
+                  <GuidedField
+                    label="Marital status"
+                  >
+                    <SelectControl
+                      value={form.maritalStatus}
+                      onValueChange={(value) => update("maritalStatus", value)}
+                      items={MARITAL_STATUSES}
+                    />
+                  </GuidedField>
+
+                  <GuidedField
+                    label="Looking for"
+                  >
                     <SelectControl
                       value={form.relationshipGoal}
                       onValueChange={(value) =>
@@ -507,17 +595,31 @@ export default function Onboarding({
                       placeholder="Choose what you want"
                       items={RELATIONSHIP_GOALS}
                     />
-                  </Field>
+                  </GuidedField>
+
+                  <GuidedField
+                    label="Occupation"
+                  >
+                    <div className="relative">
+                      <BriefcaseBusiness className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={form.occupation}
+                        placeholder="Business Owner, Designer, Developer..."
+                        onChange={(e) => update("occupation", e.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
+                  </GuidedField>
                 </div>
               </div>
             )}
 
-            {step === 1 && (
+            {step === preferencesStep && !profileOnly && (
               <div className="space-y-7">
                 <SectionHeader
                   icon={<Heart className="size-5" />}
                   title="Match preferences"
-                  description="Choose who should appear in your discovery deck."
+                  description="Choose who should appear in your discovery dashboard."
                 />
 
                 <ChoiceGrid
@@ -529,7 +631,7 @@ export default function Onboarding({
                       label: "Women",
                       detail: "Show female profiles",
                     },
-                    { id: "any", label: "Any", detail: "Keep the deck open" },
+                    { id: "any", label: "Any", detail: "Keep the dashboard open" },
                   ]}
                   selected={form.partnerGenders}
                   onToggle={(id) =>
@@ -612,6 +714,14 @@ function formatSetupLocation(form: Pick<Prefs, "city" | "country">) {
     .join(", ")
 }
 
+function normalizeCountryName(value?: string) {
+  return (value ?? "").trim().toLowerCase()
+}
+
+function getCountryFlag(country: string, flags: CountryFlagMap) {
+  return flags[normalizeCountryName(country)]
+}
+
 function isDefaultOnboardingForm(form: Prefs) {
   return JSON.stringify(form) === JSON.stringify(DEFAULT_FORM)
 }
@@ -647,6 +757,21 @@ function SectionHeader({
           {description}
         </p>
       </div>
+    </div>
+  )
+}
+
+function GuidedField({
+  children,
+  label,
+}: {
+  children: React.ReactNode
+  label: string
+}) {
+  return (
+    <div className="space-y-2">
+      <h4 className="text-sm font-medium text-muted-foreground">{label}</h4>
+      {children}
     </div>
   )
 }
@@ -782,11 +907,13 @@ function GenderToggle({
 }
 
 function LanguagePicker({
+  flagMap,
   onToggle,
   options,
   maxSelected,
   selected,
 }: {
+  flagMap?: LanguageFlagMap
   onToggle: (language: string) => void
   maxSelected: number
   options: string[]
@@ -838,7 +965,17 @@ function LanguagePicker({
                       active && "font-medium text-primary"
                     )}
                   >
-                    <span>{language}</span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      {flagMap?.[language] ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={flagMap[language]}
+                          alt=""
+                          className="h-4 w-6 shrink-0 rounded-[2px] object-cover shadow-sm"
+                        />
+                      ) : null}
+                      <span className="truncate">{language}</span>
+                    </span>
                     {active ? <Check className="size-4" /> : null}
                   </button>
                 )
@@ -993,7 +1130,7 @@ function SelectControl({
 }: {
   value: string
   onValueChange: (value: string) => void
-  items: { value: string; label: string }[]
+  items: { value: string; label: string; iconUrl?: string }[]
   placeholder?: string
   disabled?: boolean
 }) {
@@ -1005,7 +1142,17 @@ function SelectControl({
       <SelectContent>
         {items.map((item) => (
           <SelectItem key={item.value} value={item.value}>
-            {item.label}
+            <span className="flex min-w-0 items-center gap-2">
+              {item.iconUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={item.iconUrl}
+                  alt=""
+                  className="h-4 w-6 shrink-0 rounded-[2px] object-cover shadow-sm"
+                />
+              ) : null}
+              <span className="truncate">{item.label}</span>
+            </span>
           </SelectItem>
         ))}
       </SelectContent>
