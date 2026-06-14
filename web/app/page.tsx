@@ -4,18 +4,15 @@ import * as React from "react"
 import { useEffect, useMemo, useState } from "react"
 import {
   ArrowRight,
-  CalendarDays,
+  BriefcaseBusiness,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Eye,
   Filter,
   HeartHandshake,
   Languages,
+  Mail,
   MapPin,
   Mars,
   Sparkles,
-  UserRound,
   Venus,
   VenusAndMars,
 } from "lucide-react"
@@ -131,7 +128,9 @@ export default function Page() {
   const [prefs, setPrefs] = useState<Prefs | null>(null)
   const [view, setView] = useState<AppView>("home")
   const [selectedUser, setSelectedUser] = useState<RandomUser | null>(null)
-  const [countryMeta, setCountryMeta] = useState<Record<string, CountryMeta>>({})
+  const [countryMeta, setCountryMeta] = useState<Record<string, CountryMeta>>(
+    {}
+  )
 
   function goHome() {
     if (prefs) {
@@ -236,8 +235,8 @@ export default function Page() {
         const next = countries.reduce(
           (acc: Record<string, CountryMeta>, country: CountryLanguageData) => {
             const languages = Object.values(country.languages ?? {}) as string[]
-            const uniqueLanguages = Array.from(new Set(languages)).sort((a, b) =>
-              a.localeCompare(b)
+            const uniqueLanguages = Array.from(new Set(languages)).sort(
+              (a, b) => a.localeCompare(b)
             )
             const meta = {
               flag: country.flag,
@@ -247,13 +246,22 @@ export default function Page() {
               languages: uniqueLanguages,
             }
 
-            if (country.name?.common && (meta.flagUrl || country.flag || uniqueLanguages.length)) {
+            if (
+              country.name?.common &&
+              (meta.flagUrl || country.flag || uniqueLanguages.length)
+            ) {
               acc[normalizeCountryName(country.name.common)] = meta
             }
-            if (country.name?.official && (meta.flagUrl || country.flag || uniqueLanguages.length)) {
+            if (
+              country.name?.official &&
+              (meta.flagUrl || country.flag || uniqueLanguages.length)
+            ) {
               acc[normalizeCountryName(country.name.official)] = meta
             }
-            if (country.cca2 && (meta.flagUrl || country.flag || uniqueLanguages.length)) {
+            if (
+              country.cca2 &&
+              (meta.flagUrl || country.flag || uniqueLanguages.length)
+            ) {
               acc[normalizeCountryName(country.cca2)] = meta
             }
             return acc
@@ -277,7 +285,11 @@ export default function Page() {
   useEffect(() => {
     function syncFromUrl() {
       const nextView = getViewQuery()
-      setView(prefs && (!nextView || nextView === "home") ? "deck" : nextView ?? "home")
+      setView(
+        prefs && (!nextView || nextView === "home")
+          ? "deck"
+          : (nextView ?? "home")
+      )
     }
 
     window.addEventListener("popstate", syncFromUrl)
@@ -358,8 +370,9 @@ export default function Page() {
             profileOnly={Boolean(prefs)}
             onBack={prefs ? goDeck : goHome}
             onComplete={(p: Prefs) => {
+              const wasEditingProfile = Boolean(prefs)
               setPrefs(p)
-              if (selectedUser) {
+              if (!wasEditingProfile && selectedUser) {
                 goProfile(selectedUser)
               } else {
                 goDeck()
@@ -373,7 +386,6 @@ export default function Page() {
             countryMeta={countryMeta}
             users={users}
             onStart={goSetup}
-            onSelectUser={selectLandingUser}
             onLoadMore={() => fetchUsers(8)}
           />
         ) : view === "profile" && selectedUser ? (
@@ -386,8 +398,8 @@ export default function Page() {
         ) : loading && users.length === 0 ? (
           <LoadingState />
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-            <aside className="order-2 space-y-4 lg:order-1">
+          <div className="grid gap-6 lg:grid-cols-[160px_minmax(0,1fr)]">
+            <aside className="order-1 lg:order-1">
               <FilterSheet
                 matchingCount={filteredUsers.length}
                 onPrefsChange={updatePrefs}
@@ -415,6 +427,7 @@ export default function Page() {
           </div>
         )}
       </main>
+      <AppFooter />
     </div>
   )
 }
@@ -423,6 +436,84 @@ function clearAppStorage() {
   Object.keys(localStorage)
     .filter((key) => key.startsWith("wimp:"))
     .forEach((key) => localStorage.removeItem(key))
+}
+
+function AppFooter() {
+  const year = new Date().getFullYear()
+  const socials = [
+    { href: "https://facebook.com", label: "Facebook", icon: FacebookIcon },
+    { href: "https://wa.me", label: "WhatsApp", icon: WhatsAppIcon },
+    { href: "https://x.com", label: "X", icon: XSocialIcon },
+    { href: "mailto:hello@bhcozy.com", label: "Email", icon: Mail },
+  ]
+
+  return (
+    <footer className="border-t bg-background">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-5 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div>
+          <p className="font-medium text-foreground">{APP_NAME}</p>
+          <p>&copy; {year} BH Cozy. All rights reserved.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {socials.map((social) => {
+            const Icon = social.icon
+
+            return (
+              <a
+                key={social.label}
+                href={social.href}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={social.label}
+                className="flex size-9 items-center justify-center rounded-full border text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+              >
+                <Icon className="size-4" />
+              </a>
+            )
+          })}
+        </div>
+      </div>
+    </footer>
+  )
+}
+
+function FacebookIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path d="M14 8.5V6.75c0-.5.4-.75.85-.75H17V2.2C16.63 2.15 15.35 2 13.86 2 10.75 2 8.63 3.9 8.63 7.38V8.5H5.1v4.25h3.53V22H13v-9.25h3.4l.54-4.25H13V7.8c0-.86.24-1.3 1-1.3Z" />
+    </svg>
+  )
+}
+
+function WhatsAppIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path d="M12.04 2A9.87 9.87 0 0 0 2.2 11.84c0 1.73.45 3.41 1.3 4.9L2 22l5.38-1.41a9.8 9.8 0 0 0 4.66 1.18h.01A9.87 9.87 0 0 0 21.9 11.93 9.87 9.87 0 0 0 12.04 2Zm0 18.1h-.01a8.17 8.17 0 0 1-4.16-1.14l-.3-.18-3.2.84.86-3.12-.2-.32a8.15 8.15 0 1 1 7.01 3.92Zm4.48-6.12c-.25-.12-1.46-.72-1.68-.8-.23-.09-.39-.13-.56.12-.16.25-.64.8-.79.97-.14.17-.29.19-.54.07-.25-.13-1.04-.38-1.98-1.22a7.4 7.4 0 0 1-1.37-1.7c-.14-.25-.02-.38.11-.5.11-.11.25-.29.37-.43.13-.15.17-.25.25-.42.09-.17.04-.31-.02-.44-.06-.12-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.43h-.47c-.16 0-.43.06-.65.31-.22.25-.85.83-.85 2.03 0 1.19.87 2.34 1 2.5.12.17 1.72 2.63 4.16 3.68.58.25 1.04.4 1.39.51.59.19 1.12.16 1.54.1.47-.07 1.46-.6 1.66-1.17.21-.57.21-1.06.15-1.17-.06-.1-.22-.16-.47-.29Z" />
+    </svg>
+  )
+}
+
+function XSocialIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path d="M13.88 10.47 21.24 2h-1.74l-6.4 7.35L8 2H2.12l7.72 11.22L2.12 22h1.75l6.74-7.75L16 22h5.88Zm-2.38 2.74-.78-1.12L4.5 3.31h2.66l5.02 7.08.78 1.1 6.53 9.22h-2.66Z" />
+    </svg>
+  )
 }
 
 type AppView = "home" | "setup" | "deck" | "profile"
@@ -477,34 +568,33 @@ function saveSelectedUser(user: RandomUser) {
 function MarketingHome({
   countryMeta,
   onLoadMore,
-  onSelectUser,
   users,
   onStart,
 }: {
   countryMeta: Record<string, CountryMeta>
   onLoadMore: () => void
-  onSelectUser: (user: RandomUser) => void
   users: RandomUser[]
   onStart: () => void
 }) {
   const [index, setIndex] = useState(0)
 
-  function nextProfile() {
+  useEffect(() => {
     if (!users.length) return
-    const nextIndex = index + 1
-    if (nextIndex >= users.length) {
-      setIndex(0)
-      onLoadMore()
-    } else {
-      setIndex(nextIndex)
-      if (users.length - nextIndex <= 3) onLoadMore()
-    }
-  }
 
-  function prevProfile() {
-    if (!users.length) return
-    setIndex((current) => (current - 1 + users.length) % users.length)
-  }
+    const timer = window.setInterval(() => {
+      setIndex((current) => {
+        const nextIndex = current + 1
+        if (nextIndex >= users.length) {
+          onLoadMore()
+          return 0
+        }
+        if (users.length - nextIndex <= 3) onLoadMore()
+        return nextIndex
+      })
+    }, 2000)
+
+    return () => window.clearInterval(timer)
+  }, [onLoadMore, users.length])
 
   return (
     <div className="space-y-10 pb-8">
@@ -539,9 +629,6 @@ function MarketingHome({
         <HeroPreview
           countryMeta={countryMeta}
           currentIndex={index}
-          onNext={nextProfile}
-          onPrev={prevProfile}
-          onView={onSelectUser}
           users={users}
         />
       </section>
@@ -576,35 +663,18 @@ function LandingPoint({ label }: { label: string }) {
 function HeroPreview({
   countryMeta,
   currentIndex,
-  onNext,
-  onPrev,
-  onView,
   users,
 }: {
   countryMeta: Record<string, CountryMeta>
   currentIndex: number
-  onNext: () => void
-  onPrev: () => void
-  onView: (user: RandomUser) => void
   users: RandomUser[]
 }) {
   const visibleCards = [-1, 0, 1].map((offset) => {
     if (!users.length) return undefined
     return users[(currentIndex + offset + users.length) % users.length]
   })
-  const current = users[currentIndex]
-
   return (
     <div className="relative mx-auto w-full max-w-xl">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">
-            Random profile
-          </p>
-        </div>
-        <Badge variant="outline">Preview</Badge>
-      </div>
-
       <div className="relative h-[470px] overflow-hidden sm:h-[490px]">
         {visibleCards.map((user, index) => (
           <CarouselProfileCard
@@ -615,41 +685,6 @@ function HeroPreview({
             fallbackIndex={index}
           />
         ))}
-      </div>
-
-      <div className="mt-4 grid grid-cols-[1fr_1.2fr_1fr] gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          onClick={onPrev}
-          disabled={!users.length}
-          className="gap-2"
-        >
-          <ChevronLeft className="size-4" />
-          Prev
-        </Button>
-        <Button
-          type="button"
-          size="lg"
-          onClick={() => current && onView(current)}
-          disabled={!current}
-          className="gap-2"
-        >
-          <Eye className="size-4" />
-          View
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          onClick={onNext}
-          disabled={!users.length}
-          className="gap-2"
-        >
-          Next
-          <ChevronRight className="size-4" />
-        </Button>
       </div>
     </div>
   )
@@ -667,7 +702,11 @@ function CarouselProfileCard({
   user?: RandomUser
 }) {
   const fallbackNames = ["Maya Chen", "Alex Rivera", "Nora Smith"]
-  const fallbackLocations = ["Paris, France", "Toronto, Canada", "Seoul, South Korea"]
+  const fallbackLocations = [
+    "Paris, France",
+    "Toronto, Canada",
+    "Seoul, South Korea",
+  ]
   const fallbackAges = [26, 31, 24]
   const fallbackGenders = ["female", "male", "female"]
   const name = user
@@ -676,7 +715,9 @@ function CarouselProfileCard({
   const location = user?.location
     ? `${user.location.city}, ${user.location.country}`
     : fallbackLocations[fallbackIndex]
-  const username = user?.login?.username ? `@${user.login.username}` : "Profile preview"
+  const username = user?.login?.username
+    ? `@${user.login.username}`
+    : "Profile preview"
   const age = String(user?.dob?.age ?? fallbackAges[fallbackIndex])
   const gender = user?.gender ?? fallbackGenders[fallbackIndex]
   const country = user?.location?.country
@@ -685,25 +726,28 @@ function CarouselProfileCard({
     getCountryFlagUrl(user?.nat, countryMeta)
   const languages = getCountryLanguages(country, countryMeta)
   const badgeSeed = user?.login?.uuid ?? name
+  const occupation = getPreviewOccupation(badgeSeed)
   const profileBadges = getProfileBadges(badgeSeed)
   const stackClasses = [
-    "left-[6%] z-10 scale-95 opacity-55",
-    "left-1/2 z-30 -translate-x-1/2 scale-100",
-    "right-[6%] z-20 scale-95 opacity-55",
+    "left-[6%] z-10 translate-y-4 rotate-[-3deg] scale-[0.92] opacity-45",
+    "left-1/2 z-30 -translate-x-1/2 translate-y-0 rotate-0 scale-100 opacity-100",
+    "right-[6%] z-20 translate-y-4 rotate-[3deg] scale-[0.92] opacity-45",
   ]
 
   return (
     <Card
       className={cn(
-        "absolute top-0 h-[455px] w-[min(21rem,78vw)] overflow-hidden border-border/80 p-0 transition duration-300 sm:h-[475px]",
+        "absolute top-0 h-[455px] w-[min(21rem,78vw)] overflow-hidden border-border/80 p-0 transition-all duration-700 ease-out motion-safe:will-change-transform sm:h-[475px]",
         stackClasses[fallbackIndex],
-        active ? "shadow-xl shadow-primary/5" : "shadow-sm"
+        active
+          ? "animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 shadow-xl shadow-primary/5"
+          : "shadow-sm"
       )}
     >
       <div className="relative h-24 overflow-hidden bg-muted">
         {countryFlagUrl ? (
           <span
-            className="absolute right-3 top-3 z-10 flex items-center justify-center"
+            className="absolute top-3 right-3 z-10 flex items-center justify-center"
             title={country}
             aria-label={country ? `${country} flag` : "Country flag"}
           >
@@ -753,7 +797,12 @@ function CarouselProfileCard({
 
         <div className="mt-4 min-w-0">
           <div className="flex min-w-0 items-center justify-center gap-2">
-            <p className={cn("truncate font-semibold", active ? "text-xl" : "text-base")}>
+            <p
+              className={cn(
+                "truncate font-semibold",
+                active ? "text-xl" : "text-base"
+              )}
+            >
               {name || "Profile preview"}
             </p>
             <ProfileStatusIcons
@@ -765,19 +814,49 @@ function CarouselProfileCard({
           <p className="mt-1 truncate text-sm text-muted-foreground">
             {username}
           </p>
+          {active ? (
+            <div className="mt-2 flex items-center justify-center gap-2 text-xs font-semibold">
+              <span
+                aria-label={gender}
+                className={cn(
+                  "flex size-5 shrink-0 items-center justify-center",
+                  getGenderIconColor(gender)
+                )}
+                title={gender}
+              >
+                {getGenderIcon(gender)}
+              </span>
+              <span
+                aria-label={`${age} years old`}
+                className="text-muted-foreground"
+                title={`${age} years old`}
+              >
+                {age} yrs
+              </span>
+            </div>
+          ) : null}
         </div>
 
         {active ? (
           <div className="mt-4 space-y-3">
             <div className="flex items-center gap-3 text-sm">
               <span className="h-px flex-1 bg-border" />
-              <span className="text-xs font-medium text-muted-foreground">Summary</span>
+              <span className="text-xs font-medium text-muted-foreground">
+                Summary
+              </span>
               <span className="h-px flex-1 bg-border" />
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <PreviewDetail icon={<MapPin className="size-4" />} value={location} wide />
-              <PreviewDetail icon={<CalendarDays className="size-4" />} value={`${age} yrs`} />
-              <PreviewDetail icon={getGenderIcon(gender)} value={gender} capitalize />
+              <PreviewDetail
+                icon={<BriefcaseBusiness className="size-4" />}
+                value={occupation}
+                wide
+              />
+              <PreviewDetail
+                icon={<MapPin className="size-4" />}
+                value={location}
+                wide
+              />
               <PreviewLanguages languages={languages} />
             </div>
           </div>
@@ -802,29 +881,36 @@ function PreviewDetail({
   capitalize?: boolean
   icon: React.ReactNode
   wide?: boolean
-  value: string
+  value?: string
 }) {
   return (
     <div
       className={cn(
-        "flex min-w-0 items-center gap-2 rounded-md border bg-muted/35 px-2.5 py-2 text-left",
+        "flex min-w-0 items-center gap-2 px-1 text-left",
         wide && "col-span-2"
       )}
     >
-      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-background text-muted-foreground">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted/60 text-muted-foreground">
         {icon}
       </span>
-      <p className={cn("truncate text-sm font-semibold", capitalize && "capitalize")}>
-        {value}
-      </p>
+      {value ? (
+        <p
+          className={cn(
+            "truncate text-sm font-semibold",
+            capitalize && "capitalize"
+          )}
+        >
+          {value}
+        </p>
+      ) : null}
     </div>
   )
 }
 
 function PreviewLanguages({ languages }: { languages: string[] }) {
   return (
-    <div className="col-span-2 flex min-w-0 items-start gap-2 rounded-md border bg-muted/35 px-2.5 py-2 text-left">
-      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-background text-muted-foreground">
+    <div className="col-span-2 flex min-w-0 items-start gap-2 px-1 text-left">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted/60 text-muted-foreground">
         <Languages className="size-4" />
       </span>
       {languages.length > 0 ? (
@@ -832,7 +918,7 @@ function PreviewLanguages({ languages }: { languages: string[] }) {
           {languages.map((language) => (
             <span
               key={language}
-              className="rounded-sm bg-background px-2 py-1 text-xs font-semibold"
+              className="inline-flex items-center rounded-sm bg-muted/60 px-2 py-1 text-xs font-semibold"
             >
               {language}
             </span>
@@ -849,6 +935,31 @@ function getGenderIcon(gender: string) {
   if (gender === "male") return <Mars className="size-4" />
   if (gender === "female") return <Venus className="size-4" />
   return <VenusAndMars className="size-4" />
+}
+
+function getGenderIconColor(gender: string) {
+  if (gender === "male") return "text-sky-500"
+  if (gender === "female") return "text-rose-500"
+  return "text-violet-500"
+}
+
+function getPreviewOccupation(seed?: string) {
+  const occupations = [
+    "Product designer",
+    "Software developer",
+    "Marketing strategist",
+    "Teacher",
+    "Architect",
+    "Nurse",
+    "Photographer",
+    "Financial analyst",
+  ]
+  const source = seed || "profile"
+  const total = source
+    .split("")
+    .reduce((sum, char) => sum + char.charCodeAt(0), 0)
+
+  return occupations[total % occupations.length]
 }
 
 function SavedUserProfile({
@@ -912,7 +1023,10 @@ function SavedUserProfile({
           </p>
           <div className="mt-4 grid gap-3">
             <ProfileSummary label="You" value={prefs.name} />
-            <ProfileSummary label="Location" value={prefs.location ?? "Not set"} />
+            <ProfileSummary
+              label="Location"
+              value={prefs.location ?? "Not set"}
+            />
             <ProfileSummary label="Age" value={String(prefs.age)} />
             <ProfileSummary
               label="Marital status"
@@ -920,7 +1034,9 @@ function SavedUserProfile({
             />
             <ProfileSummary
               label="Languages"
-              value={prefs.languages?.length ? prefs.languages.join(", ") : "Not set"}
+              value={
+                prefs.languages?.length ? prefs.languages.join(", ") : "Not set"
+              }
             />
             <ProfileSummary
               label="Looking for"
@@ -980,20 +1096,14 @@ function getMaritalStatusLabel(value?: string) {
 function isProfileUser(user: RandomUser): user is User {
   return Boolean(
     user.name?.first &&
-      user.name?.last &&
-      user.location?.city &&
-      user.location?.country &&
-      user.picture?.large
+    user.name?.last &&
+    user.location?.city &&
+    user.location?.country &&
+    user.picture?.large
   )
 }
 
-function LandingFeature({
-  title,
-  detail,
-}: {
-  title: string
-  detail: string
-}) {
+function LandingFeature({ title, detail }: { title: string; detail: string }) {
   return (
     <Card className="p-5">
       <h2 className="font-semibold">{title}</h2>
@@ -1085,33 +1195,30 @@ function FilterSheet({
         <Button
           type="button"
           variant="outline"
-          className="h-auto w-full justify-start gap-3 p-3 text-left"
+          size="sm"
+          className="w-full justify-between gap-2 rounded-full px-3"
         >
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <span className="flex items-center gap-2">
             <Filter className="size-4" />
+            Filters
           </span>
-          <span className="min-w-0">
-            <span className="block font-semibold">Your filters</span>
-            <span className="block text-xs font-normal text-muted-foreground">
-              {matchingCount} matching profiles
-            </span>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+            {matchingCount}
           </span>
         </Button>
       </SheetTrigger>
-      <SheetContent>
+      <SheetContent side="bottom">
         <SheetHeader>
-          <SheetTitle>Your filters</SheetTitle>
+          <SheetTitle>Preferences</SheetTitle>
           <SheetDescription>
-            {matchingCount} matching profiles in the current dashboard.
+            {matchingCount} matching profile
+            {matchingCount === 1 ? "" : "s"} in your dashboard.
           </SheetDescription>
         </SheetHeader>
 
-        <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
-          {prefs.location ? (
-            <FilterRow label="Location" values={[prefs.location]} />
-          ) : null}
+        <div className="min-h-0 space-y-6 overflow-y-auto pr-1">
           <EditableFilterGroup
-            label="Gender"
+            label="Looking for"
             options={FILTER_GENDERS}
             selected={prefs.partnerGenders}
             onToggle={(value) =>
@@ -1122,7 +1229,7 @@ function FilterSheet({
             }
           />
           <EditableFilterGroup
-            label="Age"
+            label="Age range"
             options={FILTER_AGES.map((value) => ({
               value,
               label: value === "any" ? "Any" : value,
@@ -1132,18 +1239,30 @@ function FilterSheet({
               update("partnerAges", toggleFilter(prefs.partnerAges, value))
             }
           />
-          <FilterRow
-            label="You"
-            values={[
-              `${prefs.age}`,
-              prefs.gender,
-              getMaritalStatusLabel(prefs.maritalStatus),
-              getRelationshipGoalLabel(prefs.relationshipGoal),
-            ]}
-          />
+
+          {prefs.location ? (
+            <FilterRow label="Location" values={[prefs.location]} />
+          ) : null}
+
           {prefs.languages?.length ? (
             <FilterRow label="Languages" values={prefs.languages} />
           ) : null}
+
+          <div className="rounded-md border bg-muted/30 p-3">
+            <p className="text-xs font-medium text-muted-foreground">You</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {[
+                `${prefs.age}`,
+                prefs.gender,
+                getMaritalStatusLabel(prefs.maritalStatus),
+                getRelationshipGoalLabel(prefs.relationshipGoal),
+              ].map((value) => (
+                <Badge key={value} variant="secondary" className="capitalize">
+                  {value}
+                </Badge>
+              ))}
+            </div>
+          </div>
         </div>
       </SheetContent>
     </Sheet>
@@ -1164,7 +1283,7 @@ function EditableFilterGroup({
   return (
     <div>
       <p className="mb-2 text-xs font-medium text-muted-foreground">{label}</p>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="flex flex-wrap gap-2">
         {options.map((option) => {
           const active = selected.includes(option.value)
 
@@ -1174,8 +1293,8 @@ function EditableFilterGroup({
               type="button"
               onClick={() => onToggle(option.value)}
               className={cn(
-                "rounded-md border bg-background px-3 py-2 text-left text-sm font-medium capitalize transition hover:bg-muted",
-                active && "border-primary bg-primary/10 text-primary"
+                "rounded-full border bg-background px-3 py-1.5 text-sm font-medium capitalize transition hover:bg-muted",
+                active && "border-primary bg-primary text-primary-foreground"
               )}
             >
               {option.label}
@@ -1201,4 +1320,3 @@ function FilterRow({ label, values }: { label: string; values: string[] }) {
     </div>
   )
 }
-

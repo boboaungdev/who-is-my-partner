@@ -5,15 +5,23 @@ import {
   Heart,
   RotateCcw,
   Send,
-  Sparkles,
-  ThumbsDown,
+  SkipForward,
   Trash2,
   Users,
   X,
 } from "lucide-react"
 
 import UserCard, { type User } from "./UserCard"
-import { Badge } from "@/components/ui/badge"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import {
@@ -23,7 +31,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   getProfileKey,
@@ -31,6 +38,7 @@ import {
   REQUESTED_PROFILES_EVENT,
   saveRequestedProfiles,
 } from "@/lib/profile-requests"
+import { cn } from "@/lib/utils"
 
 type DeckUser = {
   gender?: string
@@ -69,30 +77,50 @@ export default function SwipeDeck({
 }) {
   const [idx, setIdx] = useState(0)
   const [likedUsers, setLikedUsers] = useState<User[]>([])
-  const [passedUsers, setPassedUsers] = useState<User[]>([])
-  const [historyView, setHistoryView] = useState<"likes" | "passes" | null>(
+  const [requestedProfiles, setRequestedProfiles] = useState<string[]>([])
+  const [historyView, setHistoryView] = useState<"likes" | "requests" | null>(
     null
   )
+  const [clearLikesOpen, setClearLikesOpen] = useState(false)
+  const [clearRequestsOpen, setClearRequestsOpen] = useState(false)
   const [restored, setRestored] = useState(false)
 
   const safeUsers = users.filter(isCardUser)
-  const current = safeUsers[idx]
-  const completion = safeUsers.length
-    ? Math.round(((idx + 1) / safeUsers.length) * 100)
-    : 0
+  const hiddenProfileKeys = React.useMemo(
+    () => new Set(likedUsers.map(getProfileKey)),
+    [likedUsers]
+  )
+  const deckUsers = safeUsers.filter(
+    (user) => !hiddenProfileKeys.has(getProfileKey(user))
+  )
+  const current = deckUsers[idx]
+  const stackUsers = getStackUsers(deckUsers, idx)
 
-  const historyUsers = historyView === "likes" ? likedUsers : passedUsers
+  const requestedUsers = safeUsers.filter((user) =>
+    requestedProfiles.includes(getProfileKey(user))
+  )
+  const historyUsers = historyView === "likes" ? likedUsers : requestedUsers
   const historyTitle =
-    historyView === "likes" ? "Liked profiles" : "Passed profiles"
+    historyView === "likes" ? "Liked profiles" : "Requested profiles"
 
   React.useEffect(() => {
-    if (idx >= safeUsers.length) setIdx(0)
-  }, [idx, safeUsers.length])
+    if (idx >= deckUsers.length) setIdx(0)
+  }, [idx, deckUsers.length])
 
   React.useEffect(() => {
     setLikedUsers(getSavedProfiles("wimp:liked-users:v1"))
-    setPassedUsers(getSavedProfiles("wimp:passed-users:v1"))
+    setRequestedProfiles(getSavedRequestedProfiles())
     setRestored(true)
+  }, [])
+
+  React.useEffect(() => {
+    function syncRequestedProfiles() {
+      setRequestedProfiles(getSavedRequestedProfiles())
+    }
+
+    window.addEventListener(REQUESTED_PROFILES_EVENT, syncRequestedProfiles)
+    return () =>
+      window.removeEventListener(REQUESTED_PROFILES_EVENT, syncRequestedProfiles)
   }, [])
 
   React.useEffect(() => {
@@ -100,28 +128,41 @@ export default function SwipeDeck({
     saveProfiles("wimp:liked-users:v1", likedUsers)
   }, [likedUsers, restored])
 
-  React.useEffect(() => {
-    if (!restored) return
-    saveProfiles("wimp:passed-users:v1", passedUsers)
-  }, [passedUsers, restored])
-
-  function next(action?: "like" | "pass") {
+  function next(action?: "like" | "skip") {
     if (action === "like" && current) {
       setLikedUsers((users) => addUniqueProfile(users, current))
-      setPassedUsers((users) => removeProfile(users, current))
     }
-    if (action === "pass" && current) {
-      setPassedUsers((users) => addUniqueProfile(users, current))
-      setLikedUsers((users) => removeProfile(users, current))
+
+    if (action === "like") {
+      if (idx >= deckUsers.length - 1) {
+        setIdx(0)
+        onLoadMore?.()
+      }
+      return
     }
 
     const nextIndex = idx + 1
-    if (nextIndex >= safeUsers.length) {
+    if (nextIndex >= deckUsers.length) {
       setIdx(0)
       onLoadMore?.()
     } else {
       setIdx(nextIndex)
     }
+  }
+
+  function clearLikedProfiles() {
+    setLikedUsers([])
+    setIdx(0)
+    try {
+      localStorage.setItem("wimp:liked-users:v1", "[]")
+    } catch {
+      // ignore storage failures
+    }
+  }
+
+  function clearRequestedProfiles() {
+    setRequestedProfiles([])
+    saveRequestedProfiles([])
   }
 
   if (!safeUsers.length) {
@@ -141,46 +182,125 @@ export default function SwipeDeck({
     )
   }
 
+  if (!deckUsers.length) {
+    return (
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <Card className="mx-auto w-full max-w-xl text-center">
+          <div className="mx-auto flex size-12 items-center justify-center rounded-lg bg-muted">
+            <Users className="size-6 text-muted-foreground" />
+          </div>
+          <h2 className="mt-4 text-xl font-semibold">No fresh profiles</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Profiles you liked are hidden from the deck.
+          </p>
+          <div className="mt-5 flex flex-col justify-center gap-2 sm:flex-row">
+            <Button onClick={onLoadMore}>Load more</Button>
+            <Button
+              variant="outline"
+              onClick={() => setClearLikesOpen(true)}
+              className="gap-2"
+            >
+              <RotateCcw className="size-4" />
+              Clear liked
+            </Button>
+          </div>
+        </Card>
+
+        <aside className="grid grid-cols-2 gap-3 self-start">
+          <StatCard
+            active={historyView === "requests"}
+            label="Requested"
+            onClick={() => setHistoryView("requests")}
+            value={String(requestedUsers.length)}
+          />
+          <StatCard
+            active={historyView === "likes"}
+            label="Likes"
+            onClick={() => setHistoryView("likes")}
+            tone="good"
+            value={String(likedUsers.length)}
+          />
+        </aside>
+
+        <HistoryDialog
+          getCountryFlagUrl={getCountryFlagUrl}
+          historyTitle={historyTitle}
+          historyUsers={historyUsers}
+          historyView={historyView}
+          onClose={() => setHistoryView(null)}
+          onProfileClick={(user) => {
+            setHistoryView(null)
+            onViewProfile?.(user)
+          }}
+          onRemove={(user) => {
+            if (historyView === "likes") {
+              setLikedUsers((users) => removeProfile(users, user))
+            }
+          }}
+          onClearLikes={() => setClearLikesOpen(true)}
+          onClearRequests={() => setClearRequestsOpen(true)}
+        />
+        <ClearHistoryDialog
+          actionLabel="Clear liked"
+          description="This will remove every profile from your Likes list. Those profiles can appear in your deck again."
+          open={clearLikesOpen}
+          title="Clear liked profiles?"
+          onConfirm={clearLikedProfiles}
+          onOpenChange={setClearLikesOpen}
+        />
+        <ClearHistoryDialog
+          actionLabel="Clear requested"
+          description="This will remove every profile from your Requested list."
+          open={clearRequestsOpen}
+          title="Clear requested profiles?"
+          onConfirm={clearRequestedProfiles}
+          onOpenChange={setClearRequestsOpen}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
       <section className="mx-auto w-full max-w-[480px] space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">
-              Profile {idx + 1} of {safeUsers.length}
-            </p>
-            <h1 className="text-2xl font-semibold">Your curated dashboard</h1>
-          </div>
-          <Badge variant="warm" className="gap-1">
-            <Sparkles className="size-3" />
-            Live
-          </Badge>
+        <div className="text-center">
+          <p className="text-sm font-semibold text-muted-foreground">
+            You may like
+          </p>
         </div>
 
-        <Progress value={completion} />
-
-        <UserCard
-          countryFlagUrl={getCountryFlagUrl?.(current)}
-          languages={getLanguages?.(current) ?? []}
-          onProfileClick={() => onViewProfile?.(current)}
-          user={current}
-        />
+        <div className="relative mx-auto h-[560px] w-full max-w-[560px] overflow-hidden sm:h-[590px]">
+          {stackUsers.map((item) => (
+            <UserCard
+              key={`${getProfileKey(item.user)}-${item.position}`}
+              className={cn(
+                "absolute top-0 w-[min(26rem,82vw)] transition-all duration-500 ease-out motion-safe:will-change-transform",
+                getStackClass(item.position)
+              )}
+              countryFlagUrl={getCountryFlagUrl?.(item.user)}
+              languages={getLanguages?.(item.user) ?? []}
+              onProfileClick={() => onViewProfile?.(item.user)}
+              showActions={item.position === "active"}
+              user={item.user}
+            />
+          ))}
+        </div>
 
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
           <Button
             variant="outline"
             size="lg"
-            onClick={() => next("pass")}
+            onClick={() => next("skip")}
             className="h-12 gap-2 border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-300 dark:hover:bg-rose-950/30"
           >
-            <ThumbsDown className="size-4" />
-            Pass
+            <SkipForward className="size-4" />
+            Skip
           </Button>
           <Button
             variant="secondary"
             size="icon-lg"
             onClick={() => next()}
-            aria-label="Skip profile"
+            aria-label="Refresh profile"
           >
             <RotateCcw className="size-4" />
           </Button>
@@ -197,10 +317,10 @@ export default function SwipeDeck({
 
       <aside className="grid grid-cols-2 gap-3 self-start">
         <StatCard
-          active={historyView === "passes"}
-          label="Passes"
-          onClick={() => setHistoryView("passes")}
-          value={String(passedUsers.length)}
+          active={historyView === "requests"}
+          label="Requested"
+          onClick={() => setHistoryView("requests")}
+          value={String(requestedUsers.length)}
         />
         <StatCard
           active={historyView === "likes"}
@@ -211,35 +331,75 @@ export default function SwipeDeck({
         />
       </aside>
 
-      <Dialog
-        open={historyView !== null}
-        onOpenChange={(open) => {
-          if (!open) setHistoryView(null)
+      <HistoryDialog
+        getCountryFlagUrl={getCountryFlagUrl}
+        historyTitle={historyTitle}
+        historyUsers={historyUsers}
+        historyView={historyView}
+        onClose={() => setHistoryView(null)}
+        onProfileClick={(user) => {
+          setHistoryView(null)
+          onViewProfile?.(user)
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{historyTitle}</DialogTitle>
-            <DialogDescription>
-              {historyUsers.length} profile
-              {historyUsers.length === 1 ? "" : "s"} saved here.
-            </DialogDescription>
-          </DialogHeader>
-          <HistoryList
-            users={historyUsers}
-            getCountryFlagUrl={getCountryFlagUrl}
-            onRemove={(user) => {
-              if (historyView === "likes") {
-                setLikedUsers((users) => removeProfile(users, user))
-              } else {
-                setPassedUsers((users) => removeProfile(users, user))
-              }
-            }}
-          />
-        </DialogContent>
-      </Dialog>
+        onRemove={(user) => {
+          if (historyView === "likes") {
+            setLikedUsers((users) => removeProfile(users, user))
+          }
+        }}
+        onClearLikes={() => setClearLikesOpen(true)}
+        onClearRequests={() => setClearRequestsOpen(true)}
+      />
+      <ClearHistoryDialog
+        actionLabel="Clear liked"
+        description="This will remove every profile from your Likes list. Those profiles can appear in your deck again."
+        open={clearLikesOpen}
+        title="Clear liked profiles?"
+        onConfirm={clearLikedProfiles}
+        onOpenChange={setClearLikesOpen}
+      />
+      <ClearHistoryDialog
+        actionLabel="Clear requested"
+        description="This will remove every profile from your Requested list."
+        open={clearRequestsOpen}
+        title="Clear requested profiles?"
+        onConfirm={clearRequestedProfiles}
+        onOpenChange={setClearRequestsOpen}
+      />
     </div>
   )
+}
+
+function getStackUsers(users: User[], activeIndex: number) {
+  if (users.length <= 1) {
+    return users[0] ? [{ user: users[0], position: "active" as const }] : []
+  }
+
+  const previousIndex = (activeIndex - 1 + users.length) % users.length
+  const nextIndex = (activeIndex + 1) % users.length
+
+  if (users.length === 2) {
+    return [
+      { user: users[activeIndex], position: "active" as const },
+      { user: users[nextIndex], position: "next" as const },
+    ]
+  }
+
+  return [
+    { user: users[previousIndex], position: "previous" as const },
+    { user: users[activeIndex], position: "active" as const },
+    { user: users[nextIndex], position: "next" as const },
+  ]
+}
+
+function getStackClass(position: "previous" | "active" | "next") {
+  if (position === "previous") {
+    return "left-[3%] z-10 translate-y-5 rotate-[-3deg] scale-[0.92] opacity-45 pointer-events-none"
+  }
+  if (position === "next") {
+    return "right-[3%] z-20 translate-y-5 rotate-[3deg] scale-[0.92] opacity-45 pointer-events-none"
+  }
+
+  return "left-1/2 z-30 -translate-x-1/2 translate-y-0 rotate-0 scale-100 opacity-100 shadow-xl shadow-primary/5 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:slide-in-from-bottom-4"
 }
 
 function isCardUser(user: DeckUser): user is User {
@@ -262,11 +422,13 @@ function removeProfile(users: User[], user: User) {
   return users.filter((item) => getProfileKey(item) !== getProfileKey(user))
 }
 
-function getSavedProfiles(key: string) {
+function getSavedProfiles(key: string, fallbackKey?: string) {
   if (typeof window === "undefined") return []
 
   try {
-    const raw = localStorage.getItem(key)
+    const raw =
+      localStorage.getItem(key) ??
+      (fallbackKey ? localStorage.getItem(fallbackKey) : null)
     const users = raw ? JSON.parse(raw) : []
     return Array.isArray(users) ? users.filter(isCardUser) : []
   } catch {
@@ -335,12 +497,117 @@ function StatCard({
   )
 }
 
+function HistoryDialog({
+  getCountryFlagUrl,
+  historyTitle,
+  historyUsers,
+  historyView,
+  onClose,
+  onClearLikes,
+  onClearRequests,
+  onProfileClick,
+  onRemove,
+}: {
+  getCountryFlagUrl?: (user: User) => string | undefined
+  historyTitle: string
+  historyUsers: User[]
+  historyView: "likes" | "requests" | null
+  onClose: () => void
+  onClearLikes: () => void
+  onClearRequests: () => void
+  onProfileClick: (user: User) => void
+  onRemove: (user: User) => void
+}) {
+  const canClear = historyUsers.length > 0
+  const clearLabel = historyView === "likes" ? "Clear liked" : "Clear requested"
+  const onClear = historyView === "likes" ? onClearLikes : onClearRequests
+
+  return (
+    <Dialog
+      open={historyView !== null}
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <div className="flex items-start justify-between gap-3 pr-7">
+            <div>
+              <DialogTitle>{historyTitle}</DialogTitle>
+              <DialogDescription>
+                {historyUsers.length} profile
+                {historyUsers.length === 1 ? "" : "s"} saved here.
+              </DialogDescription>
+            </div>
+            {historyView && canClear ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onClear}
+                className="gap-1.5"
+              >
+                <Trash2 className="size-3.5" />
+                {clearLabel}
+              </Button>
+            ) : null}
+          </div>
+        </DialogHeader>
+        <HistoryList
+          users={historyUsers}
+          getCountryFlagUrl={getCountryFlagUrl}
+          onProfileClick={onProfileClick}
+          onRemove={onRemove}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ClearHistoryDialog({
+  actionLabel,
+  description,
+  onConfirm,
+  onOpenChange,
+  open,
+  title,
+}: {
+  actionLabel: string
+  description: string
+  onConfirm: () => void
+  onOpenChange: (open: boolean) => void
+  open: boolean
+  title: string
+}) {
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {description}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm} className="gap-1.5">
+            <Trash2 className="size-3.5" />
+            {actionLabel}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
 function HistoryList({
   getCountryFlagUrl,
+  onProfileClick,
   onRemove,
   users,
 }: {
   getCountryFlagUrl?: (user: User) => string | undefined
+  onProfileClick: (user: User) => void
   onRemove: (user: User) => void
   users: User[]
 }) {
@@ -353,6 +620,7 @@ function HistoryList({
               <ProfileRow
                 key={`${user.login?.uuid ?? user.name.first}-${index}`}
                 countryFlagUrl={getCountryFlagUrl?.(user)}
+                onProfileClick={() => onProfileClick(user)}
                 onRemove={() => onRemove(user)}
                 user={user}
               />
@@ -370,10 +638,12 @@ function HistoryList({
 
 function ProfileRow({
   countryFlagUrl,
+  onProfileClick,
   onRemove,
   user,
 }: {
   countryFlagUrl?: string
+  onProfileClick: () => void
   onRemove: () => void
   user: User
 }) {
@@ -407,29 +677,46 @@ function ProfileRow({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-2.5 sm:flex-row sm:items-center">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={user.picture.large}
-        alt={name}
-        className="size-11 shrink-0 rounded-full object-cover"
-      />
-      <div className="min-w-0 self-stretch sm:self-auto">
-        <p className="truncate text-sm font-semibold">{name}</p>
-        <p className="truncate text-xs capitalize text-muted-foreground">
-          {user.gender ? `${user.gender} / ` : ""}
-          {countryFlagUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={countryFlagUrl}
-              alt=""
-              className="mr-1 inline h-3 w-5 rounded-[2px] object-cover align-[-1px]"
-            />
-          ) : null}
-          {location}
-        </p>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onProfileClick}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault()
+          onProfileClick()
+        }
+      }}
+      className="flex cursor-pointer flex-col gap-3 rounded-md border bg-muted/30 p-2.5 outline-none transition hover:bg-muted/45 focus-visible:ring-3 focus-visible:ring-ring/40 sm:flex-row sm:items-center"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={user.picture.large}
+          alt={name}
+          className="size-11 shrink-0 rounded-full object-cover"
+        />
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">{name}</p>
+          <p className="truncate text-xs capitalize text-muted-foreground">
+            {user.gender ? `${user.gender} / ` : ""}
+            {countryFlagUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={countryFlagUrl}
+                alt=""
+                className="mr-1 inline h-3 w-5 rounded-[2px] object-cover align-[-1px]"
+              />
+            ) : null}
+            {location}
+          </p>
+        </div>
       </div>
-      <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
+      <div
+        className="flex w-full gap-2 sm:ml-auto sm:w-auto"
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
+      >
         <Button
           type="button"
           variant={requested ? "secondary" : "outline"}

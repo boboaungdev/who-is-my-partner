@@ -43,16 +43,23 @@ function SheetContent({
   side = "right",
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
-  side?: "left" | "right"
+  side?: "bottom" | "left" | "right"
 }) {
+  const sideClass =
+    side === "bottom"
+      ? "inset-x-0 bottom-0 max-h-[85svh] w-full rounded-t-xl border-t sm:inset-y-0 sm:left-auto sm:right-0 sm:max-h-none sm:w-[min(26rem,calc(100vw-2rem))] sm:rounded-none sm:border-l sm:border-t-0"
+      : side === "left"
+        ? "inset-y-0 left-0 w-[min(26rem,calc(100vw-1rem))] border-r sm:w-[min(26rem,calc(100vw-2rem))]"
+        : "inset-y-0 right-0 w-[min(26rem,calc(100vw-1rem))] border-l sm:w-[min(26rem,calc(100vw-2rem))]"
+
   return (
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Content
         data-slot="sheet-content"
         className={cn(
-          "fixed inset-y-0 z-50 flex w-[min(26rem,calc(100vw-1rem))] flex-col gap-5 border bg-background p-4 text-foreground shadow-xl outline-none sm:w-[min(26rem,calc(100vw-2rem))] sm:p-6",
-          side === "left" ? "left-0 border-r" : "right-0 border-l",
+          "fixed z-50 flex flex-col gap-5 border bg-background p-4 text-foreground shadow-xl outline-none sm:p-6",
+          sideClass,
           className
         )}
         {...props}

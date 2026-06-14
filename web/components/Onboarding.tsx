@@ -30,7 +30,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Progress } from "@/components/ui/progress"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
   SelectContent,
@@ -312,7 +311,15 @@ export default function Onboarding({
   }
 
   function next() {
-    if (step < steps.length - 1) setStep((s) => s + 1)
+    if (step < steps.length - 1) {
+      if (!profileOnly && step === preferencesStep - 1) {
+        setForm((s) => ({
+          ...s,
+          partnerGenders: getDefaultPartnerGenders(s.gender),
+        }))
+      }
+      setStep((s) => s + 1)
+    }
   }
 
   function back() {
@@ -342,7 +349,9 @@ export default function Onboarding({
     form.birthday.trim().length > 1 &&
     form.age >= 18
   const canContinueLocation =
-    form.country.trim().length > 1 && form.city.trim().length > 1
+    form.country.trim().length > 1 &&
+    form.city.trim().length > 1 &&
+    form.languages.length > 0
   const canContinueDetails =
     form.occupation.trim().length > 1 &&
     form.relationshipGoal.trim().length > 1
@@ -545,8 +554,8 @@ export default function Onboarding({
                             ))}
                           </div>
                         ) : (
-                          <p className="text-xs text-muted-foreground">
-                            No languages selected.
+                          <p className="text-xs text-destructive">
+                            Select at least one language.
                           </p>
                         )}
                       </div>
@@ -720,6 +729,12 @@ function normalizeCountryName(value?: string) {
 
 function getCountryFlag(country: string, flags: CountryFlagMap) {
   return flags[normalizeCountryName(country)]
+}
+
+function getDefaultPartnerGenders(gender: string) {
+  if (gender === "male") return ["female"]
+  if (gender === "female") return ["male"]
+  return ["any"]
 }
 
 function isDefaultOnboardingForm(form: Prefs) {
@@ -919,76 +934,49 @@ function LanguagePicker({
   options: string[]
   selected: string[]
 }) {
-  const [query, setQuery] = useState("")
-  const filteredOptions = options.filter((language) =>
-    language.toLowerCase().includes(query.trim().toLowerCase())
-  )
-
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-muted/35 px-3 py-2 text-left text-sm shadow-xs outline-none transition hover:bg-muted/50 focus:border-ring focus:bg-background focus:ring-3 focus:ring-ring/30"
+    <Select value="" onValueChange={onToggle}>
+      <SelectTrigger>
+        <span
+          className={cn(
+            "truncate",
+            selected.length === 0 && "text-muted-foreground"
+          )}
         >
-          <span className={cn("truncate", selected.length === 0 && "text-muted-foreground")}>
-            {selected.length > 0
-              ? `${selected.length}/${maxSelected} language${selected.length === 1 ? "" : "s"} selected`
-              : "Pick languages"}
-          </span>
-          <ChevronRight className="size-4 rotate-90 text-muted-foreground" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-[min(24rem,calc(100vw-2rem))] p-2">
-        <div className="space-y-2">
-          <Input
-            value={query}
-            placeholder="Search languages"
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          <ScrollArea className="h-72 rounded-md">
-            {filteredOptions.length > 0 ? (
-              filteredOptions.map((language) => {
-                const active = selected.includes(language)
-                const disabled = !active && selected.length >= maxSelected
+          {selected.length > 0
+            ? `${selected.length}/${maxSelected} language${selected.length === 1 ? "" : "s"} selected`
+            : "Pick languages"}
+        </span>
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((language) => {
+          const active = selected.includes(language)
+          const disabled = active || selected.length >= maxSelected
 
-                return (
-                  <button
-                    key={language}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => {
-                      if (!disabled) onToggle(language)
-                    }}
-                    className={cn(
-                      "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-40",
-                      active && "font-medium text-primary"
-                    )}
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      {flagMap?.[language] ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={flagMap[language]}
-                          alt=""
-                          className="h-4 w-6 shrink-0 rounded-[2px] object-cover shadow-sm"
-                        />
-                      ) : null}
-                      <span className="truncate">{language}</span>
-                    </span>
-                    {active ? <Check className="size-4" /> : null}
-                  </button>
-                )
-              })
-            ) : (
-              <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-                No languages found.
-              </p>
-            )}
-          </ScrollArea>
-        </div>
-      </PopoverContent>
-    </Popover>
+          return (
+            <SelectItem key={language} value={language} disabled={disabled}>
+              <span
+                className={cn(
+                  "flex min-w-0 items-center gap-2",
+                  active && "font-medium text-primary"
+                )}
+              >
+                {flagMap?.[language] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={flagMap[language]}
+                    alt=""
+                    className="h-4 w-6 shrink-0 rounded-[2px] object-cover shadow-sm"
+                  />
+                ) : null}
+                <span className="truncate">{language}</span>
+                {active ? <Check className="size-4 shrink-0" /> : null}
+              </span>
+            </SelectItem>
+          )
+        })}
+      </SelectContent>
+    </Select>
   )
 }
 

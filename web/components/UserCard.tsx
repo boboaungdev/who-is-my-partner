@@ -3,18 +3,21 @@
 import * as React from "react"
 import Image from "next/image"
 import {
+  BriefcaseBusiness,
   Languages,
-  Mail,
   MapPin,
+  Mars,
   Send,
-  Phone,
   UserRound,
+  Venus,
+  VenusAndMars,
   X,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import ProfileStatusIcons from "@/components/ProfileStatusIcons"
 import { getProfileBadges } from "@/lib/profile-badges"
+import { cn } from "@/lib/utils"
 import {
   getProfileKey,
   getSavedRequestedProfiles,
@@ -45,32 +48,31 @@ export type User = {
 }
 
 export default function UserCard({
+  className,
   countryFlagUrl,
   hideProfileButton = false,
   languages = [],
   onProfileClick,
+  showActions = true,
   user,
 }: {
+  className?: string
   countryFlagUrl?: string
   hideProfileButton?: boolean
   languages?: string[]
   onProfileClick?: () => void
+  showActions?: boolean
   user: User
 }) {
-  const name = `${user.name.title ? `${user.name.title} ` : ""}${user.name.first} ${user.name.last}`
+  const name = `${user.name.first} ${user.name.last}`
   const location = [user.location.city, user.location.state, user.location.country]
     .filter(Boolean)
     .join(", ")
   const username = user.login?.username
-  const street = user.location.street
-    ? `${user.location.street.number ?? ""} ${user.location.street.name ?? ""}`.trim()
-    : undefined
-  const postcode = user.location.postcode
-    ? String(user.location.postcode)
-    : undefined
   const badgeSeed = user.login?.uuid ?? username
   const profileBadges = getProfileBadges(badgeSeed)
-  const languageList = languages.length ? languages.join(", ") : "Not set"
+  const age = user.dob?.age ? `${user.dob.age} yrs` : "Age hidden"
+  const occupation = getPreviewOccupation(badgeSeed ?? name)
   const profileKey = getProfileKey(user)
   const [requestedProfiles, setRequestedProfiles] = React.useState<string[]>([])
   const requested = requestedProfiles.includes(profileKey)
@@ -96,9 +98,13 @@ export default function UserCard({
   }
 
   return (
-    <article className="overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm">
-      <div className="relative overflow-hidden border-b bg-muted/45 p-6">
-        <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(244,63,94,0.14),transparent_45%),linear-gradient(315deg,rgba(14,165,233,0.16),transparent_42%)]" />
+    <article
+      className={cn(
+        "overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm",
+        className
+      )}
+    >
+      <div className="relative h-28 overflow-hidden bg-muted">
         {countryFlagUrl ? (
           <span className="absolute right-3 top-3 z-10 flex items-center justify-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -109,137 +115,189 @@ export default function UserCard({
             />
           </span>
         ) : null}
-        <div className="relative flex flex-col items-center text-center">
-          <div className="relative size-36 overflow-hidden rounded-full border-4 border-background bg-background shadow-xl sm:size-40">
-            <Image
-              src={user.picture.large}
-              alt={name}
-              fill
-              sizes="160px"
-              priority
-              className="object-cover"
+        <Image
+          src={user.picture.large}
+          alt=""
+          fill
+          sizes="480px"
+          priority
+          className="scale-110 object-cover blur-sm"
+        />
+        <div className="absolute inset-0 bg-background/35" />
+      </div>
+
+      <div className="-mt-16 flex flex-col p-5 pt-0 text-center">
+        <div className="relative mx-auto size-32 shrink-0 overflow-hidden rounded-full border-4 border-background bg-muted shadow-md sm:size-36">
+          <Image
+            src={user.picture.large}
+            alt={name}
+            fill
+            sizes="144px"
+            priority
+            className="object-cover"
+          />
+        </div>
+
+        <div className="mt-4 min-w-0">
+          <div className="flex min-w-0 items-center justify-center gap-2">
+            <h2 className="truncate text-xl font-semibold">{name}</h2>
+            <ProfileStatusIcons
+              badges={profileBadges}
+              iconClassName="size-5"
+              seed={badgeSeed}
             />
           </div>
 
-          <div className="mt-5 flex min-w-0 flex-wrap items-center justify-center gap-2 px-1">
-            <h2 className="min-w-0 break-words text-xl font-semibold sm:text-2xl">
-              {name}
-            </h2>
-            <ProfileStatusIcons badges={profileBadges} seed={badgeSeed} />
-          </div>
-          <p className="mt-2 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <MapPin className="size-4" />
-            {location}
+          <p className="mt-1 truncate text-sm text-muted-foreground">
+            {username ? `@${username}` : "@profile"}
           </p>
-        </div>
-      </div>
 
-      <div className="space-y-4 p-5">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <InfoTile
-            icon={<UserRound className="size-4" />}
-            label="Handle"
-            value={username ? `@${username}` : "Private"}
-          />
-          <InfoTile
-            icon={<UserRound className="size-4" />}
-            label="Gender"
-            value={user.gender ?? "Not set"}
-          />
-          <InfoTile
-            icon={<Mail className="size-4" />}
-            label="Email"
-            value={user.email ?? "Private"}
-          />
-          <InfoTile
-            icon={<Phone className="size-4" />}
-            label="Phone"
-            value={user.cell ?? user.phone ?? "Private"}
-          />
-        </div>
-
-        <DetailBlock
-          icon={<Languages className="size-4" />}
-          label="Languages"
-          value={languageList}
-        />
-
-        {street ? (
-          <DetailBlock
-            icon={<MapPin className="size-4" />}
-            label="Address"
-            value={[street, postcode].filter(Boolean).join(" - ")}
-          />
-        ) : null}
-
-        <div className="grid gap-2 sm:grid-cols-2">
-          {!hideProfileButton ? (
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={onProfileClick}
+          <div className="mt-2 flex items-center justify-center gap-2 text-xs font-semibold">
+            <span
+              aria-label={user.gender}
+              className={cn(
+                "flex size-5 shrink-0 items-center justify-center",
+                getGenderIconColor(user.gender)
+              )}
+              title={user.gender}
             >
-              <UserRound className="size-4" />
-              Profile
-            </Button>
-          ) : null}
-          <Button
-            className="gap-2"
-            variant={requested ? "secondary" : "default"}
-            onClick={toggleRequest}
-          >
-            {requested ? (
-              <X className="size-4" />
-            ) : (
-              <Send className="size-4" />
-            )}
-            <span className="truncate">
-              {requested ? "Cancel request" : "Send request"}
+              {getGenderIcon(user.gender)}
             </span>
-          </Button>
+            <span className="text-muted-foreground">{age}</span>
+          </div>
         </div>
+
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center gap-3 text-sm">
+            <span className="h-px flex-1 bg-border" />
+            <span className="text-xs font-medium text-muted-foreground">
+              Summary
+            </span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <ProfileDetail
+              icon={<BriefcaseBusiness className="size-4" />}
+              value={occupation}
+              wide
+            />
+            <ProfileDetail
+              icon={<MapPin className="size-4" />}
+              value={location}
+              wide
+            />
+            <ProfileLanguages languages={languages} />
+          </div>
+        </div>
+
+        {showActions ? (
+          <div className="mt-5 grid gap-2 sm:grid-cols-2">
+            {!hideProfileButton ? (
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={onProfileClick}
+              >
+                <UserRound className="size-4" />
+                Profile
+              </Button>
+            ) : null}
+            <Button
+              className="gap-2"
+              variant={requested ? "secondary" : "default"}
+              onClick={toggleRequest}
+            >
+              {requested ? (
+                <X className="size-4" />
+              ) : (
+                <Send className="size-4" />
+              )}
+              <span className="truncate">
+                {requested ? "Cancel request" : "Send request"}
+              </span>
+            </Button>
+          </div>
+        ) : null}
       </div>
     </article>
   )
 }
 
-function DetailBlock({
+function ProfileDetail({
   icon,
-  label,
+  wide,
   value,
 }: {
   icon: React.ReactNode
-  label: string
+  wide?: boolean
   value: string
 }) {
   return (
-    <div className="rounded-lg border bg-muted/35 p-3">
-      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+    <div
+      className={cn(
+        "flex min-w-0 items-center gap-2 px-1 text-left",
+        wide && "col-span-2"
+      )}
+    >
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted/60 text-muted-foreground">
         {icon}
-        {label}
-      </div>
-      <p className="mt-1 break-words text-sm font-semibold">{value}</p>
+      </span>
+      <p className="truncate text-sm font-semibold">{value}</p>
     </div>
   )
 }
 
-
-function InfoTile({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: string
-}) {
+function ProfileLanguages({ languages }: { languages: string[] }) {
   return (
-    <div className="rounded-lg border bg-muted/35 p-3">
-      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-        {icon}
-        {label}
-      </div>
-      <p className="mt-1 truncate text-sm font-semibold">{value}</p>
+    <div className="col-span-2 flex min-w-0 items-start gap-2 px-1 text-left">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted/60 text-muted-foreground">
+        <Languages className="size-4" />
+      </span>
+      {languages.length > 0 ? (
+        <div className="flex min-w-0 flex-wrap gap-1.5">
+          {languages.map((language) => (
+            <span
+              key={language}
+              className="inline-flex items-center rounded-sm bg-muted/60 px-2 py-1 text-xs font-semibold"
+            >
+              {language}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="truncate text-sm font-semibold">Languages loading</p>
+      )}
     </div>
   )
+}
+
+function getGenderIcon(gender?: string) {
+  if (gender === "male") return <Mars className="size-4" />
+  if (gender === "female") return <Venus className="size-4" />
+  return <VenusAndMars className="size-4" />
+}
+
+function getGenderIconColor(gender?: string) {
+  if (gender === "male") return "text-sky-500"
+  if (gender === "female") return "text-rose-500"
+  return "text-violet-500"
+}
+
+function getPreviewOccupation(seed?: string) {
+  const occupations = [
+    "Product designer",
+    "Software developer",
+    "Marketing strategist",
+    "Teacher",
+    "Architect",
+    "Nurse",
+    "Photographer",
+    "Financial analyst",
+  ]
+  const source = seed || "profile"
+  const total = source
+    .split("")
+    .reduce((sum, char) => sum + char.charCodeAt(0), 0)
+
+  return occupations[total % occupations.length]
 }

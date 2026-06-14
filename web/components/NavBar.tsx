@@ -3,11 +3,11 @@
 import * as React from "react"
 import {
   HeartHandshake,
+  LogIn,
   LogOut,
   Moon,
   Rocket,
   Settings,
-  SlidersHorizontal,
   Sun,
   UserRound,
 } from "lucide-react"
@@ -49,7 +49,7 @@ export default function NavBar({
           </div>
           <div className="min-w-0">
             <div className="truncate font-semibold leading-tight">{APP_NAME}</div>
-            <div className="hidden text-xs text-muted-foreground sm:block">
+            <div className="text-xs text-muted-foreground">
               Powered by BH Cozy
             </div>
           </div>
@@ -60,8 +60,8 @@ export default function NavBar({
             <>
               <ThemeToggle />
               <Button onClick={onStart} className="gap-2">
-                <SlidersHorizontal className="size-4" />
-                Get started
+                <LogIn className="size-4" />
+                Start
               </Button>
             </>
           ) : (
@@ -207,15 +207,14 @@ function ThemeToggle() {
   const isDark = mounted && resolvedTheme === "dark"
 
   return (
-    <Button
+    <button
       type="button"
-      variant="outline"
-      size="icon"
       aria-label="Toggle theme"
       onClick={() => setTheme(isDark ? "light" : "dark")}
+      className="flex size-9 items-center justify-center rounded-full text-muted-foreground outline-none transition hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40"
     >
       {isDark ? <Moon className="size-4" /> : <Sun className="size-4" />}
-    </Button>
+    </button>
   )
 }
 
