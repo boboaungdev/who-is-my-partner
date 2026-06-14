@@ -3,20 +3,24 @@
 import * as React from "react"
 import Image from "next/image"
 import {
-  CalendarDays,
-  Clock,
-  Compass,
+  Languages,
   Mail,
   MapPin,
-  MessageCircle,
+  Send,
   Phone,
   UserRound,
+  X,
 } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import ProfileStatusIcons from "@/components/ProfileStatusIcons"
 import { getProfileBadges } from "@/lib/profile-badges"
+import {
+  getProfileKey,
+  getSavedRequestedProfiles,
+  REQUESTED_PROFILES_EVENT,
+  saveRequestedProfiles,
+} from "@/lib/profile-requests"
 
 export type User = {
   gender?: string
@@ -40,13 +44,23 @@ export type User = {
   nat?: string
 }
 
-export default function UserCard({ user }: { user: User }) {
+export default function UserCard({
+  countryFlagUrl,
+  hideProfileButton = false,
+  languages = [],
+  onProfileClick,
+  user,
+}: {
+  countryFlagUrl?: string
+  hideProfileButton?: boolean
+  languages?: string[]
+  onProfileClick?: () => void
+  user: User
+}) {
   const name = `${user.name.title ? `${user.name.title} ` : ""}${user.name.first} ${user.name.last}`
   const location = [user.location.city, user.location.state, user.location.country]
     .filter(Boolean)
     .join(", ")
-  const age = user.dob?.age
-  const nat = user.nat
   const username = user.login?.username
   const street = user.location.street
     ? `${user.location.street.number ?? ""} ${user.location.street.name ?? ""}`.trim()
@@ -54,23 +68,47 @@ export default function UserCard({ user }: { user: User }) {
   const postcode = user.location.postcode
     ? String(user.location.postcode)
     : undefined
-  const coordinates =
-    user.location.coordinates?.latitude && user.location.coordinates.longitude
-      ? `${user.location.coordinates.latitude}, ${user.location.coordinates.longitude}`
-      : undefined
-  const registered = user.registered?.age
-    ? `${user.registered.age} yrs`
-    : formatDate(user.registered?.date)
-  const timezone = user.location.timezone
-    ? `${user.location.timezone.offset ?? ""} ${user.location.timezone.description ?? ""}`.trim()
-    : undefined
   const badgeSeed = user.login?.uuid ?? username
   const profileBadges = getProfileBadges(badgeSeed)
+  const languageList = languages.length ? languages.join(", ") : "Not set"
+  const profileKey = getProfileKey(user)
+  const [requestedProfiles, setRequestedProfiles] = React.useState<string[]>([])
+  const requested = requestedProfiles.includes(profileKey)
+
+  React.useEffect(() => {
+    function syncRequestedProfiles() {
+      setRequestedProfiles(getSavedRequestedProfiles())
+    }
+
+    syncRequestedProfiles()
+    window.addEventListener(REQUESTED_PROFILES_EVENT, syncRequestedProfiles)
+    return () =>
+      window.removeEventListener(REQUESTED_PROFILES_EVENT, syncRequestedProfiles)
+  }, [])
+
+  function toggleRequest() {
+    const next = requested
+      ? requestedProfiles.filter((key) => key !== profileKey)
+      : [...requestedProfiles, profileKey]
+
+    saveRequestedProfiles(next)
+    setRequestedProfiles(next)
+  }
 
   return (
     <article className="overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm">
       <div className="relative overflow-hidden border-b bg-muted/45 p-6">
         <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(244,63,94,0.14),transparent_45%),linear-gradient(315deg,rgba(14,165,233,0.16),transparent_42%)]" />
+        {countryFlagUrl ? (
+          <span className="absolute right-3 top-3 z-10 flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={countryFlagUrl}
+              alt=""
+              className="h-6 w-8 rounded-[2px] object-cover shadow-sm"
+            />
+          </span>
+        ) : null}
         <div className="relative flex flex-col items-center text-center">
           <div className="relative size-36 overflow-hidden rounded-full border-4 border-background bg-background shadow-xl sm:size-40">
             <Image
@@ -83,24 +121,9 @@ export default function UserCard({ user }: { user: User }) {
             />
           </div>
 
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-            <Badge variant="outline" className="bg-background/80 backdrop-blur">
-              {nat ?? "Global"}
-            </Badge>
-            {user.gender ? (
-              <Badge
-                variant="outline"
-                className="bg-background/80 capitalize backdrop-blur"
-              >
-                {user.gender}
-              </Badge>
-            ) : null}
-          </div>
-
-          <div className="mt-4 flex min-w-0 flex-wrap items-center justify-center gap-2">
-            <h2 className="min-w-0 text-3xl font-semibold">
+          <div className="mt-5 flex min-w-0 flex-wrap items-center justify-center gap-2 px-1">
+            <h2 className="min-w-0 break-words text-xl font-semibold sm:text-2xl">
               {name}
-              {age ? <span className="font-normal text-muted-foreground">, {age}</span> : null}
             </h2>
             <ProfileStatusIcons badges={profileBadges} seed={badgeSeed} />
           </div>
@@ -112,16 +135,16 @@ export default function UserCard({ user }: { user: User }) {
       </div>
 
       <div className="space-y-4 p-5">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <InfoTile
             icon={<UserRound className="size-4" />}
             label="Handle"
             value={username ? `@${username}` : "Private"}
           />
           <InfoTile
-            icon={<CalendarDays className="size-4" />}
-            label="Registered"
-            value={registered ?? "New"}
+            icon={<UserRound className="size-4" />}
+            label="Gender"
+            value={user.gender ?? "Not set"}
           />
           <InfoTile
             icon={<Mail className="size-4" />}
@@ -135,13 +158,11 @@ export default function UserCard({ user }: { user: User }) {
           />
         </div>
 
-        {timezone ? (
-          <DetailBlock
-            icon={<Clock className="size-4" />}
-            label="Timezone"
-            value={timezone}
-          />
-        ) : null}
+        <DetailBlock
+          icon={<Languages className="size-4" />}
+          label="Languages"
+          value={languageList}
+        />
 
         {street ? (
           <DetailBlock
@@ -151,22 +172,30 @@ export default function UserCard({ user }: { user: User }) {
           />
         ) : null}
 
-        {coordinates ? (
-          <DetailBlock
-            icon={<Compass className="size-4" />}
-            label="Coordinates"
-            value={coordinates}
-          />
-        ) : null}
-
-        <div className="flex gap-2">
-          <Button variant="outline" className="flex-1 gap-2">
-            <UserRound className="size-4" />
-            Profile
-          </Button>
-          <Button className="flex-1 gap-2">
-            <MessageCircle className="size-4" />
-            Message
+        <div className="grid gap-2 sm:grid-cols-2">
+          {!hideProfileButton ? (
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={onProfileClick}
+            >
+              <UserRound className="size-4" />
+              Profile
+            </Button>
+          ) : null}
+          <Button
+            className="gap-2"
+            variant={requested ? "secondary" : "default"}
+            onClick={toggleRequest}
+          >
+            {requested ? (
+              <X className="size-4" />
+            ) : (
+              <Send className="size-4" />
+            )}
+            <span className="truncate">
+              {requested ? "Cancel request" : "Send request"}
+            </span>
           </Button>
         </div>
       </div>
@@ -194,14 +223,6 @@ function DetailBlock({
   )
 }
 
-function formatDate(date?: string) {
-  if (!date) return undefined
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(date))
-}
 
 function InfoTile({
   icon,

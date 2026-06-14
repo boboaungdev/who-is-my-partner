@@ -14,7 +14,6 @@ import {
   Languages,
   Loader2,
   MapPin,
-  MapPinned,
   Mars,
   Sparkles,
   UserRound,
@@ -31,6 +30,14 @@ import UserCard, { type User } from "@/components/UserCard"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
 import {
   APP_NAME,
   COUNTRY_LANGUAGE_API_URL,
@@ -133,6 +140,11 @@ export default function Page() {
     setViewQuery("setup")
   }
 
+  function editProfile() {
+    setView("setup")
+    setViewQuery("setup")
+  }
+
   function goDeck() {
     setView("deck")
     setViewQuery("deck")
@@ -182,9 +194,9 @@ export default function Page() {
 
         if (savedPrefs) {
           setPrefs(savedPrefs)
-          const nextView = view === "setup" ? "deck" : view ?? "deck"
+          const nextView = view ?? "deck"
           setView(nextView)
-          if (!view || view === "setup") setViewQuery("deck", "replace")
+          if (!view) setViewQuery("deck", "replace")
         } else {
           setPrefs(null)
           const nextView = view === "setup" ? "setup" : "home"
@@ -253,8 +265,7 @@ export default function Page() {
   useEffect(() => {
     function syncFromUrl() {
       const nextView = getViewQuery()
-      setView(nextView === "setup" && prefs ? "deck" : nextView ?? (prefs ? "deck" : "home"))
-      if (nextView === "setup" && prefs) setViewQuery("deck", "replace")
+      setView(nextView ?? (prefs ? "deck" : "home"))
     }
 
     window.addEventListener("popstate", syncFromUrl)
@@ -301,6 +312,7 @@ export default function Page() {
       <NavBar
         prefs={prefs}
         userImage={signedUserImage}
+        onEditProfile={editProfile}
         onHome={goHome}
         onStart={goSetup}
         onSignOut={() => {
@@ -320,7 +332,9 @@ export default function Page() {
       <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:py-8">
         {view === "setup" ? (
           <Onboarding
-            onBack={goHome}
+            initialPrefs={prefs}
+            profileOnly={Boolean(prefs)}
+            onBack={prefs ? goDeck : goHome}
             onComplete={(p: Prefs) => {
               setPrefs(p)
               if (selectedUser) {
@@ -342,6 +356,7 @@ export default function Page() {
           />
         ) : view === "profile" && selectedUser ? (
           <SavedUserProfile
+            countryMeta={countryMeta}
             prefs={prefs}
             user={selectedUser}
             onBack={goDeck}
@@ -350,49 +365,30 @@ export default function Page() {
           <LoadingState />
         ) : (
           <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-            <aside className="space-y-4">
-              <Card className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <Filter className="size-5" />
-                  </div>
-                  <div>
-                    <h2 className="font-semibold">Your filters</h2>
-                    <p className="text-sm text-muted-foreground">
-                      {filteredUsers.length} matching profiles
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-4 space-y-3">
-                  {prefs.location ? (
-                    <FilterRow label="Location" values={[prefs.location]} />
-                  ) : null}
-                  <FilterRow label="Gender" values={prefs.partnerGenders} />
-                  <FilterRow label="Age" values={prefs.partnerAges} />
-                  <FilterRow
-                    label="You"
-                    values={[
-                      `${prefs.age}`,
-                      prefs.gender,
-                      getMaritalStatusLabel(prefs.maritalStatus),
-                      getRelationshipGoalLabel(prefs.relationshipGoal),
-                    ]}
-                  />
-                  {prefs.languages?.length ? (
-                    <FilterRow label="Languages" values={prefs.languages} />
-                  ) : null}
-                </div>
-              </Card>
-
-              <InsightCard
-                icon={<MapPinned className="size-5" />}
-                title="Profile spread"
-                value={`${users.length} loaded`}
-                detail="More profiles are fetched automatically as the deck loops."
+            <aside className="order-2 space-y-4 lg:order-1">
+              <FilterSheet
+                matchingCount={filteredUsers.length}
+                prefs={prefs}
               />
             </aside>
 
-            <SwipeDeck users={filteredUsers} onLoadMore={() => fetchUsers(8)} />
+            <div className="order-1 lg:order-2">
+              <SwipeDeck
+                getCountryFlagUrl={(user) =>
+                  getCountryFlagUrl(user.location?.country, countryMeta)
+                }
+                getLanguages={(user) =>
+                  getCountryLanguages(user.location?.country, countryMeta)
+                }
+                users={filteredUsers}
+                onLoadMore={() => fetchUsers(8)}
+                onViewProfile={(user) => {
+                  setSelectedUser(user)
+                  saveSelectedUser(user)
+                  goProfile(user)
+                }}
+              />
+            </div>
           </div>
         )}
       </main>
@@ -833,10 +829,12 @@ function getGenderIcon(gender: string) {
 }
 
 function SavedUserProfile({
+  countryMeta,
   prefs,
   user,
   onBack,
 }: {
+  countryMeta: Record<string, CountryMeta>
   prefs: Prefs
   user: RandomUser
   onBack: () => void
@@ -874,7 +872,12 @@ function SavedUserProfile({
             Back to deck
           </Button>
         </div>
-        <UserCard user={user} />
+        <UserCard
+          countryFlagUrl={getCountryFlagUrl(user.location.country, countryMeta)}
+          hideProfileButton
+          languages={getCountryLanguages(user.location.country, countryMeta)}
+          user={user}
+        />
       </section>
 
       <aside className="space-y-4">
@@ -988,6 +991,64 @@ function LoadingState() {
   )
 }
 
+function FilterSheet({
+  matchingCount,
+  prefs,
+}: {
+  matchingCount: number
+  prefs: Prefs
+}) {
+  return (
+    <Sheet>
+      <SheetTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-auto w-full justify-start gap-3 p-3 text-left"
+        >
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Filter className="size-4" />
+          </span>
+          <span className="min-w-0">
+            <span className="block font-semibold">Your filters</span>
+            <span className="block text-xs font-normal text-muted-foreground">
+              {matchingCount} matching profiles
+            </span>
+          </span>
+        </Button>
+      </SheetTrigger>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Your filters</SheetTitle>
+          <SheetDescription>
+            {matchingCount} matching profiles in the current deck.
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
+          {prefs.location ? (
+            <FilterRow label="Location" values={[prefs.location]} />
+          ) : null}
+          <FilterRow label="Gender" values={prefs.partnerGenders} />
+          <FilterRow label="Age" values={prefs.partnerAges} />
+          <FilterRow
+            label="You"
+            values={[
+              `${prefs.age}`,
+              prefs.gender,
+              getMaritalStatusLabel(prefs.maritalStatus),
+              getRelationshipGoalLabel(prefs.relationshipGoal),
+            ]}
+          />
+          {prefs.languages?.length ? (
+            <FilterRow label="Languages" values={prefs.languages} />
+          ) : null}
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
 function FilterRow({ label, values }: { label: string; values: string[] }) {
   return (
     <div>
@@ -1003,31 +1064,3 @@ function FilterRow({ label, values }: { label: string; values: string[] }) {
   )
 }
 
-function InsightCard({
-  icon,
-  title,
-  value,
-  detail,
-}: {
-  icon: React.ReactNode
-  title: string
-  value: string
-  detail: string
-}) {
-  return (
-    <Card className="p-4">
-      <div className="flex items-start gap-3">
-        <div className="flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-          {icon}
-        </div>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <p className="mt-1 text-xl font-semibold">{value}</p>
-          <p className="mt-2 text-sm leading-5 text-muted-foreground">
-            {detail}
-          </p>
-        </div>
-      </div>
-    </Card>
-  )
-}

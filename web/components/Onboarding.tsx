@@ -64,6 +64,8 @@ type Prefs = {
 }
 
 type Props = {
+  initialPrefs?: Partial<Prefs> | null
+  profileOnly?: boolean
   onBack?: () => void
   onComplete: (prefs: Prefs) => void
 }
@@ -78,7 +80,7 @@ type RestCountry = {
 }
 
 const AGE_RANGES = ["any", "18-24", "25-30", "31-40", "41+"]
-const STEPS = ["Profile", "Preferences", "Review"]
+const STEPS = ["Profile", "Preferences"]
 const RELATIONSHIP_GOALS = [
   { value: "long-term", label: "Long-term partner" },
   { value: "meaningful-dates", label: "Meaningful dates" },
@@ -110,10 +112,18 @@ const DEFAULT_FORM: Prefs = {
   partnerAges: ["any"],
 }
 
-export default function Onboarding({ onBack, onComplete }: Props) {
+export default function Onboarding({
+  initialPrefs,
+  profileOnly = false,
+  onBack,
+  onComplete,
+}: Props) {
   const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(false)
-  const [form, setForm] = useState<Prefs>(() => getSavedOnboardingForm())
+  const [form, setForm] = useState<Prefs>(() =>
+    initialPrefs ? { ...DEFAULT_FORM, ...initialPrefs } : getSavedOnboardingForm()
+  )
+  const steps = profileOnly ? ["Profile"] : STEPS
   const [locationOptions, setLocationOptions] = useState<CountryCityOption[]>(
     []
   )
@@ -262,7 +272,7 @@ export default function Onboarding({ onBack, onComplete }: Props) {
   }
 
   function next() {
-    if (step < STEPS.length - 1) setStep((s) => s + 1)
+    if (step < steps.length - 1) setStep((s) => s + 1)
   }
 
   function back() {
@@ -285,7 +295,7 @@ export default function Onboarding({ onBack, onComplete }: Props) {
     }
   }
 
-  const progress = ((step + 1) / STEPS.length) * 100
+  const progress = ((step + 1) / steps.length) * 100
   const canContinue =
     step === 0
       ? form.name.trim().length > 1 &&
@@ -293,10 +303,9 @@ export default function Onboarding({ onBack, onComplete }: Props) {
         form.birthday.trim().length > 1 &&
         form.age >= 18 &&
         form.country.trim().length > 1 &&
-        form.city.trim().length > 1
-      : step === 1
-        ? form.partnerGenders.length > 0 && form.partnerAges.length > 0
-        : true
+        form.city.trim().length > 1 &&
+        form.occupation.trim().length > 1
+      : form.partnerGenders.length > 0 && form.partnerAges.length > 0
 
   return (
     <Card className="overflow-hidden p-0">
@@ -318,9 +327,9 @@ export default function Onboarding({ onBack, onComplete }: Props) {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">
-                  Step {step + 1} of {STEPS.length}
+                  Step {step + 1} of {steps.length}
                 </p>
-                <h2 className="mt-1 text-2xl font-semibold">{STEPS[step]}</h2>
+                <h2 className="mt-1 text-2xl font-semibold">{steps[step]}</h2>
               </div>
               <Badge variant="secondary">{Math.round(progress)}%</Badge>
             </div>
@@ -477,7 +486,7 @@ export default function Onboarding({ onBack, onComplete }: Props) {
                     ) : null}
                   </Field>
 
-                  <Field label="Occupation (optional)">
+                  <Field label="Occupation">
                     <div className="relative">
                       <BriefcaseBusiness className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
@@ -556,60 +565,6 @@ export default function Onboarding({ onBack, onComplete }: Props) {
               </div>
             )}
 
-            {step === 2 && (
-              <div className="space-y-5">
-                <SectionHeader
-                  icon={<Check className="size-5" />}
-                  title="Review setup"
-                  description="Confirm your profile before opening the deck."
-                />
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <ReviewItem label="Name" value={form.name || "Not set"} />
-                  <ReviewItem
-                    label="Avatar"
-                    value={form.avatar ? "Uploaded" : "Not set"}
-                  />
-                  <ReviewItem
-                    label="Birthday"
-                    value={formatBirthday(form.birthday) || "Not set"}
-                  />
-                  <ReviewItem label="Gender" value={form.gender} />
-                  <ReviewItem
-                    label="Location"
-                    value={form.location || formatSetupLocation(form)}
-                  />
-                  <ReviewItem
-                    label="Occupation"
-                    value={form.occupation || "Not set"}
-                  />
-                  <ReviewItem
-                    label="Marital status"
-                    value={getMaritalStatusLabel(form.maritalStatus)}
-                  />
-                  <ReviewItem
-                    label="Languages"
-                    value={
-                      form.languages.length
-                        ? form.languages.join(", ")
-                        : "Not set"
-                    }
-                  />
-                  <ReviewItem
-                    label="Looking for"
-                    value={getRelationshipGoalLabel(form.relationshipGoal)}
-                  />
-                  <ReviewItem
-                    label="Looking for"
-                    value={form.partnerGenders.join(", ")}
-                  />
-                  <ReviewItem
-                    label="Age ranges"
-                    value={form.partnerAges.join(", ")}
-                  />
-                </div>
-              </div>
-            )}
           </div>
 
           <div className="mt-6 flex items-center justify-between border-t pt-4 sm:mt-8 sm:pt-5">
@@ -622,14 +577,18 @@ export default function Onboarding({ onBack, onComplete }: Props) {
               Back
             </Button>
 
-            {step < STEPS.length - 1 ? (
+            {step < steps.length - 1 ? (
               <Button onClick={next} disabled={!canContinue} className="gap-2">
                 Next
                 <ArrowRight className="size-4" />
               </Button>
             ) : (
-              <Button onClick={submit} disabled={loading} className="gap-2">
-                {loading ? "Saving..." : "Start matching"}
+              <Button
+                onClick={submit}
+                disabled={loading || !canContinue}
+                className="gap-2"
+              >
+                {loading ? "Saving..." : initialPrefs ? "Save profile" : "Start matching"}
                 <Heart className="size-4" />
               </Button>
             )}
@@ -651,20 +610,6 @@ function formatSetupLocation(form: Pick<Prefs, "city" | "country">) {
     .map((part) => part.trim())
     .filter(Boolean)
     .join(", ")
-}
-
-function getRelationshipGoalLabel(value: string) {
-  return (
-    RELATIONSHIP_GOALS.find((goal) => goal.value === value)?.label ??
-    value.replace(/-/g, " ")
-  )
-}
-
-function getMaritalStatusLabel(value: string) {
-  return (
-    MARITAL_STATUSES.find((status) => status.value === value)?.label ??
-    value.replace(/-/g, " ")
-  )
 }
 
 function isDefaultOnboardingForm(form: Prefs) {
@@ -1213,23 +1158,6 @@ function ChoiceGrid({
           )
         })}
       </div>
-    </div>
-  )
-}
-
-function ReviewItem({
-  label,
-  value,
-}: {
-  label: string
-  value: string
-}) {
-  return (
-    <div className="rounded-lg border bg-muted/30 p-4">
-      <p className="text-xs font-medium uppercase text-muted-foreground">
-        {label}
-      </p>
-      <p className="mt-1 font-medium capitalize">{value}</p>
     </div>
   )
 }
