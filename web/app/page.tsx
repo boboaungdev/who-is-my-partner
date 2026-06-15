@@ -15,6 +15,7 @@ import {
   MapPin,
   Mars,
   Sparkles,
+  UserRound,
   Venus,
   VenusAndMars,
 } from "lucide-react"
@@ -28,6 +29,7 @@ import UserCard, { type User } from "@/components/UserCard"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -123,6 +125,28 @@ const FILTER_GENDERS = [
   { value: "any", label: "Any" },
 ]
 const FILTER_AGES = ["any", "18-24", "25-30", "31-40", "41+"]
+const RELATIONSHIP_GOALS = [
+  { value: "long-term", label: "Long-term partner" },
+  { value: "meaningful-dates", label: "Meaningful dates" },
+  { value: "friendship-first", label: "Friendship first" },
+  { value: "exploring", label: "Still exploring" },
+]
+const MARITAL_STATUSES = [
+  { value: "single", label: "Single" },
+  { value: "divorced", label: "Divorced" },
+  { value: "separated", label: "Separated" },
+  { value: "widowed", label: "Widowed" },
+]
+const OCCUPATION_SUGGESTIONS = [
+  "Business Owner",
+  "Developer",
+  "Designer",
+  "Teacher",
+  "Doctor",
+  "Engineer",
+  "Marketing Manager",
+  "Student",
+]
 const WORLDWIDE = "__worldwide__"
 const SAME_AS_MY_COUNTRY = "__same_as_my_country__"
 const SAME_AS_CURRENT_LOCATION = "__same_as_current_location__"
@@ -268,6 +292,7 @@ export default function Page() {
   const [loading, setLoading] = useState(false)
   const [prefs, setPrefs] = useState<Prefs | null>(null)
   const [view, setView] = useState<AppView>("home")
+  const [profileSheetOpen, setProfileSheetOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<RandomUser | null>(null)
   const [countryMeta, setCountryMeta] = useState<Record<string, CountryMeta>>(
     {}
@@ -298,8 +323,18 @@ export default function Page() {
   }
 
   function editProfile() {
+    if (prefs) {
+      setProfileSheetOpen(true)
+      return
+    }
+
     setView("setup")
     setViewQuery("setup")
+  }
+
+  function viewMyProfile() {
+    setView("my-profile")
+    setViewQuery("my-profile")
   }
 
   function goDeck() {
@@ -547,6 +582,7 @@ export default function Page() {
         onEditProfile={editProfile}
         onHome={goHome}
         onStart={goSetup}
+        onViewProfile={viewMyProfile}
         onSignOut={() => {
           try {
             clearAppStorage()
@@ -555,6 +591,7 @@ export default function Page() {
           }
           setPrefs(null)
           setSelectedUser(null)
+          setProfileSheetOpen(false)
           setView("home")
           clearViewQuery()
           setUsers([])
@@ -592,6 +629,14 @@ export default function Page() {
             countryMeta={countryMeta}
             user={selectedUser}
             onBack={goDeck}
+          />
+        ) : view === "my-profile" && prefs ? (
+          <MyProfileView
+            avatar={signedUserImage}
+            countryMeta={countryMeta}
+            prefs={prefs}
+            onBack={goDeck}
+            onEditProfile={editProfile}
           />
         ) : (
           <div className="grid gap-6 lg:grid-cols-[160px_minmax(0,1fr)]">
@@ -631,6 +676,30 @@ export default function Page() {
           </div>
         )}
       </main>
+      <Sheet open={profileSheetOpen} onOpenChange={setProfileSheetOpen}>
+        <SheetContent
+          side="right"
+          className="w-[min(48rem,calc(100vw-1rem))] overflow-y-auto sm:w-[min(48rem,calc(100vw-2rem))]"
+        >
+          <SheetHeader>
+            <SheetTitle>Edit profile</SheetTitle>
+            <SheetDescription>Make quick changes to your account.</SheetDescription>
+          </SheetHeader>
+          {prefs ? (
+            <SimpleProfileEditForm
+              countryMeta={countryMeta}
+              locationOptions={locationOptions}
+              locationsLoading={locationsLoading}
+              prefs={prefs}
+              onCancel={() => setProfileSheetOpen(false)}
+              onSave={(nextPrefs) => {
+                updatePrefs(nextPrefs)
+                setProfileSheetOpen(false)
+              }}
+            />
+          ) : null}
+        </SheetContent>
+      </Sheet>
       <AppFooter />
     </div>
   )
@@ -640,6 +709,366 @@ function clearAppStorage() {
   Object.keys(localStorage)
     .filter((key) => key.startsWith("wimp:"))
     .forEach((key) => localStorage.removeItem(key))
+}
+
+function SimpleProfileEditForm({
+  countryMeta,
+  locationOptions,
+  locationsLoading,
+  onCancel,
+  onSave,
+  prefs,
+}: {
+  countryMeta: Record<string, CountryMeta>
+  locationOptions: CountryCityOption[]
+  locationsLoading: boolean
+  onCancel: () => void
+  onSave: (prefs: Prefs) => void
+  prefs: Prefs
+}) {
+  const [draft, setDraft] = React.useState<Prefs>(prefs)
+  const currentCountry = draft.currentCountry || draft.country || ""
+  const cityOptions = getCities(currentCountry, locationOptions)
+  const canSave =
+    draft.name.trim().length > 1 &&
+    draft.gender.trim().length > 0 &&
+    draft.occupation?.trim() &&
+    !draft.occupation.includes(",")
+
+  React.useEffect(() => {
+    setDraft(prefs)
+  }, [prefs])
+
+  function update<K extends keyof Prefs>(key: K, value: Prefs[K]) {
+    setDraft((current) => ({ ...current, [key]: value }))
+  }
+
+  function updateAvatar(file?: File) {
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        update("avatar", reader.result)
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function updateCurrentCountry(value: string) {
+    setDraft((current) => ({
+      ...current,
+      currentCountry: value,
+      currentCity: "",
+      country: value,
+      city: "",
+      location: value,
+    }))
+  }
+
+  function updateCurrentCity(value: string) {
+    setDraft((current) => ({
+      ...current,
+      currentCity: value,
+      city: value,
+      location: formatProfileLocation(value, current.currentCountry || current.country),
+    }))
+  }
+
+  function save() {
+    const occupation = sanitizeProfileOccupation(draft.occupation)
+    const currentCountry = draft.currentCountry || draft.country || ""
+    const currentCity = draft.currentCity || draft.city || ""
+
+    onSave({
+      ...draft,
+      occupation,
+      age: draft.birthday ? calculateProfileAge(draft.birthday) : draft.age,
+      currentCountry,
+      currentCity,
+      country: currentCountry,
+      city: currentCity,
+      location: formatProfileLocation(currentCity, currentCountry),
+    })
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-4">
+        <div className="size-16 overflow-hidden rounded-full border bg-muted">
+          {draft.avatar ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={draft.avatar}
+              alt=""
+              className="size-full object-cover"
+            />
+          ) : (
+            <div className="flex size-full items-center justify-center text-muted-foreground">
+              <UserRound className="size-6" />
+            </div>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold">
+            {draft.name || "Your profile"}
+          </p>
+          <Input
+            type="file"
+            accept="image/*"
+            className="mt-2"
+            onChange={(event) => updateAvatar(event.target.files?.[0])}
+          />
+        </div>
+      </div>
+
+      <SimpleEditField label="Name">
+        <Input
+          value={draft.name}
+          placeholder="Alex Morgan"
+          onChange={(event) => update("name", event.target.value)}
+        />
+      </SimpleEditField>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <SimpleEditField label="Gender">
+          <SimpleSelect
+            value={draft.gender}
+            placeholder="Select gender"
+            items={[
+              { value: "male", label: "Male" },
+              { value: "female", label: "Female" },
+              { value: "any", label: "Other" },
+            ]}
+            onValueChange={(value) => update("gender", value)}
+          />
+        </SimpleEditField>
+        <SimpleEditField label="Birthday">
+          <Input
+            type="date"
+            value={formatDateInputValue(draft.birthday)}
+            onChange={(event) => update("birthday", event.target.value)}
+          />
+        </SimpleEditField>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <SimpleEditField label="Home country">
+          <CountryEditSelect
+            countryMeta={countryMeta}
+            disabled={locationsLoading}
+            locationOptions={locationOptions}
+            placeholder="Select home country"
+            value={draft.homeCountry || ""}
+            onValueChange={(value) => update("homeCountry", value)}
+          />
+        </SimpleEditField>
+        <SimpleEditField label="Current country">
+          <CountryEditSelect
+            countryMeta={countryMeta}
+            disabled={locationsLoading}
+            locationOptions={locationOptions}
+            placeholder="Select current country"
+            value={currentCountry}
+            onValueChange={updateCurrentCountry}
+          />
+        </SimpleEditField>
+      </div>
+
+      <SimpleEditField label="Current city">
+        <SimpleSelect
+          disabled={!currentCountry || cityOptions.length === 0}
+          value={draft.currentCity || draft.city || ""}
+          placeholder={
+            currentCountry ? "Select current city" : "Select country first"
+          }
+          items={cityOptions.map((city) => ({ value: city, label: city }))}
+          onValueChange={updateCurrentCity}
+        />
+      </SimpleEditField>
+
+      <SimpleEditField label="Occupation">
+        <div className="space-y-2.5">
+          <Input
+            value={draft.occupation ?? ""}
+            placeholder="Business Owner"
+            onChange={(event) =>
+              update("occupation", sanitizeProfileOccupation(event.target.value))
+            }
+            onKeyDown={(event) => {
+              if (event.key === ",") event.preventDefault()
+            }}
+          />
+          <div className="flex flex-wrap gap-2">
+            {OCCUPATION_SUGGESTIONS.map((occupation) => (
+              <button
+                key={occupation}
+                type="button"
+                onClick={() => update("occupation", occupation)}
+                className={cn(
+                  "rounded-full border bg-background px-3 py-1.5 text-sm font-medium transition hover:border-primary/40 hover:bg-muted/40",
+                  draft.occupation === occupation &&
+                    "border-primary bg-primary text-primary-foreground"
+                )}
+              >
+                {occupation}
+              </button>
+            ))}
+          </div>
+        </div>
+      </SimpleEditField>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <SimpleEditField label="Marital status">
+          <SimpleSelect
+            value={draft.maritalStatus || "single"}
+            items={MARITAL_STATUSES}
+            onValueChange={(value) => update("maritalStatus", value)}
+          />
+        </SimpleEditField>
+        <SimpleEditField label="Looking for">
+          <SimpleSelect
+            value={draft.relationshipGoal || "long-term"}
+            items={RELATIONSHIP_GOALS}
+            onValueChange={(value) => update("relationshipGoal", value)}
+          />
+        </SimpleEditField>
+      </div>
+
+      <div className="sticky bottom-0 -mx-4 flex justify-end gap-2 border-t bg-background/95 px-4 py-4 backdrop-blur sm:-mx-6 sm:px-6">
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="button" disabled={!canSave} onClick={save}>
+          Save changes
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function SimpleEditField({
+  children,
+  label,
+}: {
+  children: React.ReactNode
+  label: string
+}) {
+  return (
+    <label className="block space-y-2">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      {children}
+    </label>
+  )
+}
+
+function SimpleSelect({
+  disabled,
+  items,
+  onValueChange,
+  placeholder = "Select",
+  value,
+}: {
+  disabled?: boolean
+  items: { value: string; label: string }[]
+  onValueChange: (value: string) => void
+  placeholder?: string
+  value?: string
+}) {
+  return (
+    <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+      <SelectTrigger>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {items.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            {item.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+function CountryEditSelect({
+  countryMeta,
+  disabled,
+  locationOptions,
+  onValueChange,
+  placeholder,
+  value,
+}: {
+  countryMeta: Record<string, CountryMeta>
+  disabled?: boolean
+  locationOptions: CountryCityOption[]
+  onValueChange: (value: string) => void
+  placeholder: string
+  value: string
+}) {
+  return (
+    <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+      <SelectTrigger>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {locationOptions.map((item) => {
+          const iconUrl = getCountryFlagUrl(item.country, countryMeta)
+
+          return (
+            <SelectItem key={item.country} value={item.country}>
+              <span className="flex min-w-0 items-center gap-2">
+                {iconUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={iconUrl}
+                    alt=""
+                    className="h-4 w-6 shrink-0 rounded-[2px] object-cover shadow-sm"
+                  />
+                ) : null}
+                <span className="truncate">{item.country}</span>
+              </span>
+            </SelectItem>
+          )
+        })}
+      </SelectContent>
+    </Select>
+  )
+}
+
+function sanitizeProfileOccupation(value?: string) {
+  return (value ?? "").replace(/,/g, "").replace(/\s+/g, " ").trimStart()
+}
+
+function formatDateInputValue(value?: string) {
+  if (!value) return ""
+  return value.includes("T") ? value.split("T")[0] : value
+}
+
+function calculateProfileAge(value?: string) {
+  if (!value) return 0
+
+  const birthday = new Date(value)
+  if (Number.isNaN(birthday.getTime())) return 0
+
+  const today = new Date()
+  let age = today.getFullYear() - birthday.getFullYear()
+  const monthDiff = today.getMonth() - birthday.getMonth()
+  if (
+    monthDiff < 0 ||
+    (monthDiff === 0 && today.getDate() < birthday.getDate())
+  ) {
+    age -= 1
+  }
+
+  return age
+}
+
+function formatProfileLocation(city?: string, country?: string) {
+  return [city, country]
+    .map((part) => (part ?? "").trim())
+    .filter(Boolean)
+    .join(", ")
 }
 
 function AppFooter() {
@@ -720,14 +1149,15 @@ function XSocialIcon({ className }: { className?: string }) {
   )
 }
 
-type AppView = "home" | "setup" | "deck" | "profile"
+type AppView = "home" | "setup" | "deck" | "profile" | "my-profile"
 
 function getViewQuery(): AppView | null {
   const view = new URLSearchParams(window.location.search).get("view")
   return view === "home" ||
     view === "setup" ||
     view === "deck" ||
-    view === "profile"
+    view === "profile" ||
+    view === "my-profile"
     ? view
     : null
 }
@@ -954,20 +1384,6 @@ function CarouselProfileCard({
       )}
     >
       <div className="relative h-24 overflow-hidden bg-muted">
-        {countryFlagUrl ? (
-          <span
-            className="absolute top-3 right-3 z-10 flex items-center justify-center"
-            title={country}
-            aria-label={country ? `${country} flag` : "Country flag"}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={countryFlagUrl}
-              alt=""
-              className="h-6 w-8 rounded-[2px] object-cover shadow-sm"
-            />
-          </span>
-        ) : null}
         {user?.picture?.large ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -1041,6 +1457,16 @@ function CarouselProfileCard({
               >
                 {age} yrs
               </span>
+              {countryFlagUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={countryFlagUrl}
+                  alt=""
+                  className="h-4 w-6 shrink-0 rounded-[2px] object-cover shadow-sm"
+                  title={country}
+                  aria-label={country ? `${country} flag` : "Country flag"}
+                />
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -1236,6 +1662,110 @@ function SavedUserProfile({
       />
     </section>
   )
+}
+
+function MyProfileView({
+  avatar,
+  countryMeta,
+  prefs,
+  onBack,
+  onEditProfile,
+}: {
+  avatar?: string | null
+  countryMeta: Record<string, CountryMeta>
+  prefs: Prefs
+  onBack: () => void
+  onEditProfile: () => void
+}) {
+  const user = getPrefsProfileUser(prefs, avatar)
+  const country = prefs.currentCountry || prefs.country
+  const homeCountry = prefs.homeCountry || prefs.country || country
+
+  return (
+    <section className="mx-auto w-full max-w-[520px]">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">
+            Your profile
+          </p>
+          <h1 className="text-2xl font-semibold">{prefs.name}</h1>
+        </div>
+        <Button variant="outline" onClick={onBack}>
+          Back to dashboard
+        </Button>
+      </div>
+      <UserCard
+        countryFlagUrl={getCountryFlagUrl(country, countryMeta)}
+        hideProfileButton
+        homeCountry={getCountryName(homeCountry, countryMeta) ?? homeCountry}
+        languages={prefs.languages ?? getCountryLanguages(country, countryMeta)}
+        occupation={prefs.occupation}
+        onEditProfile={onEditProfile}
+        relationshipLabel={getMyProfileLookingFor(prefs.relationshipGoal)}
+        user={user}
+        variant="self"
+      />
+    </section>
+  )
+}
+
+function getPrefsProfileUser(prefs: Prefs, avatar?: string | null): User {
+  const [firstName, ...lastNameParts] = (prefs.name || "Your Profile").split(" ")
+  const currentCountry = prefs.currentCountry || prefs.country || "Not set"
+  const currentCity = prefs.currentCity || prefs.city || "Not set"
+
+  return {
+    gender: prefs.gender,
+    name: {
+      first: firstName || "Your",
+      last: lastNameParts.join(" ") || "Profile",
+    },
+    location: {
+      city: currentCity,
+      country: currentCountry,
+    },
+    dob: {
+      age: prefs.age,
+      date: prefs.birthday,
+    },
+    picture: {
+      large: avatar || "/icon.svg",
+    },
+    login: {
+      uuid: "my-profile",
+      username: formatUsername(prefs.name),
+    },
+    nat: prefs.homeCountry || prefs.country,
+  }
+}
+
+function getMyProfileLookingFor(value?: string) {
+  switch (value) {
+    case "long-term":
+    case "serious":
+      return "Long-term partner"
+    case "meaningful-dates":
+      return "Meaningful dates"
+    case "friendship-first":
+    case "friendship":
+      return "Friendship first"
+    case "exploring":
+    case "open":
+      return "Still exploring"
+    case "casual":
+      return "Casual dating"
+    default:
+      return "Not set"
+  }
+}
+
+function formatUsername(name?: string) {
+  const handle = (name ?? "user")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+
+  return handle || "user"
 }
 
 function isProfileUser(user: RandomUser): user is User {

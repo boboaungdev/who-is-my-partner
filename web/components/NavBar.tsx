@@ -35,6 +35,7 @@ type Props = {
   userImage?: string | null
   onHome: () => void
   onEditProfile: () => void
+  onViewProfile: () => void
   onStart: () => void
   onSignOut: () => void
 }
@@ -46,6 +47,7 @@ export default function NavBar({
   onHome,
   onStart,
   onSignOut,
+  onViewProfile,
 }: Props) {
   return (
     <nav className="sticky top-0 z-40 border-b bg-background/88 backdrop-blur-xl">
@@ -84,6 +86,7 @@ export default function NavBar({
                 location={prefs.location}
                 avatarSrc={userImage ?? undefined}
                 onEditProfile={onEditProfile}
+                onViewProfile={onViewProfile}
                 onSignOut={onSignOut}
               />
             </>
@@ -300,12 +303,14 @@ function MenuAvatar({
   avatarSrc,
   name,
   onEditProfile,
+  onViewProfile,
   onSignOut,
 }: {
   avatarSrc?: string
   location?: string
   name?: string
   onEditProfile: () => void
+  onViewProfile: () => void
   onSignOut: () => void
 }) {
   const [open, setOpen] = React.useState(false)
@@ -339,7 +344,7 @@ function MenuAvatar({
             className="flex w-full items-center gap-3 border-b p-3 text-left hover:bg-muted"
             onClick={() => {
               setOpen(false)
-              onEditProfile()
+              onViewProfile()
             }}
           >
             <Avatar src={avatarSrc} name={name} size={40} />
@@ -358,7 +363,7 @@ function MenuAvatar({
               label="Profile"
               onClick={() => {
                 setOpen(false)
-                onEditProfile()
+                onViewProfile()
               }}
             />
             <MenuButton icon={<Settings className="size-4" />} label="Settings" />

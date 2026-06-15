@@ -13,6 +13,7 @@ import {
   MapPin,
   Mars,
   MessageCircle,
+  Pencil,
   Send,
   UserRound,
   Venus,
@@ -70,10 +71,14 @@ export default function UserCard({
   hideProfileButton = false,
   homeCountry,
   languages = [],
+  occupation,
   onProfileClick,
+  onEditProfile,
   onRequestSent,
+  relationshipLabel,
   showRequestMenu = false,
   showActions = true,
+  variant = "request",
   user,
 }: {
   className?: string
@@ -81,10 +86,14 @@ export default function UserCard({
   hideProfileButton?: boolean
   homeCountry?: string
   languages?: string[]
+  occupation?: string
+  onEditProfile?: () => void
   onProfileClick?: () => void
   onRequestSent?: () => void
+  relationshipLabel?: string
   showRequestMenu?: boolean
   showActions?: boolean
+  variant?: "request" | "self"
   user: User
 }) {
   const name = `${user.name.first} ${user.name.last}`
@@ -96,8 +105,8 @@ export default function UserCard({
   const badgeSeed = user.login?.uuid ?? username
   const profileBadges = getProfileBadges(badgeSeed)
   const age = user.dob?.age ? `${user.dob.age} yrs` : "Age hidden"
-  const occupation = getPreviewOccupation(badgeSeed ?? name)
-  const lookingFor = getProfileLookingFor(badgeSeed ?? name)
+  const displayOccupation = occupation || getPreviewOccupation(badgeSeed ?? name)
+  const lookingFor = relationshipLabel || getProfileLookingFor(badgeSeed ?? name)
   const profileKey = getProfileKey(user)
   const [requestedProfiles, setRequestedProfiles] = React.useState<string[]>([])
   const [requestStatus, setRequestStatus] = React.useState<
@@ -222,7 +231,7 @@ export default function UserCard({
           <div className="grid grid-cols-2 gap-2">
             <ProfileDetail
               icon={<BriefcaseBusiness className="size-4" />}
-              value={occupation}
+              value={displayOccupation}
               wide
             />
             <ProfileDetail
@@ -261,7 +270,12 @@ export default function UserCard({
                 Profile
               </Button>
             ) : null}
-            {showRequestMenu ? (
+            {variant === "self" ? (
+              <Button className="gap-2" onClick={onEditProfile}>
+                <Pencil className="size-4" />
+                Edit profile
+              </Button>
+            ) : showRequestMenu ? (
               <RequestActionGroup
                 disabled={requestButton.disabled}
                 icon={requestButton.icon}
