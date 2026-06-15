@@ -69,7 +69,11 @@ export type User = {
   nat?: string
 }
 
+const LIKED_PROFILES_STORAGE_KEY = "wimp:liked-users:v1"
+const LIKED_PROFILES_EVENT = "wimp:liked-users:change"
+
 export default function UserCard({
+  actionOverride,
   className,
   countryFlagUrl,
   homeCountry,
@@ -79,9 +83,12 @@ export default function UserCard({
   onProfileClick,
   onRespondToIncomingRequest,
   onEditProfile,
+  requestedActionLabel = "Unsave",
   onRequestSent,
   relationshipLabel,
+  menuSaveLabel = "Save",
   onSaveProfile,
+  showProfileMenuItem = true,
   showRequestMenu = false,
   showActions = true,
   variant = "request",
@@ -90,6 +97,13 @@ export default function UserCard({
   incomingRequestId,
   incomingRequestStatus,
 }: {
+  actionOverride?: {
+    disabled?: boolean
+    icon: React.ReactNode
+    label: string
+    onClick?: () => void
+    variant: "default" | "secondary"
+  }
   className?: string
   clickableCard?: boolean
   countryFlagUrl?: string
@@ -105,8 +119,11 @@ export default function UserCard({
     notificationId: string,
     status: Exclude<RequestNotificationStatus, "pending">
   ) => void
+  requestedActionLabel?: string
   onRequestSent?: () => void
+  menuSaveLabel?: string
   onSaveProfile?: () => void
+  showProfileMenuItem?: boolean
   relationshipLabel?: string
   showRequestMenu?: boolean
   showActions?: boolean
@@ -131,13 +148,29 @@ export default function UserCard({
   const lookingFor =
     relationshipLabel || getProfileLookingFor(badgeSeed ?? name)
   const profileKey = getProfileKey(user)
+  const [likedProfileKeys, setLikedProfileKeys] = React.useState<string[]>([])
   const [requestedProfiles, setRequestedProfiles] = React.useState<string[]>([])
   const [requestStatus, setRequestStatus] = React.useState<
     "accepted" | "rejected" | undefined
   >()
   const [requestLoading, setRequestLoading] = React.useState(false)
   const requestTimerRef = React.useRef<number | null>(null)
+  const isSaved = likedProfileKeys.includes(profileKey)
   const requested = requestedProfiles.includes(profileKey)
+
+  React.useEffect(() => {
+    function syncLikedProfiles() {
+      setLikedProfileKeys(getSavedLikedProfileKeys())
+    }
+
+    syncLikedProfiles()
+    window.addEventListener(LIKED_PROFILES_EVENT, syncLikedProfiles)
+    window.addEventListener("storage", syncLikedProfiles)
+    return () => {
+      window.removeEventListener(LIKED_PROFILES_EVENT, syncLikedProfiles)
+      window.removeEventListener("storage", syncLikedProfiles)
+    }
+  }, [])
 
   React.useEffect(() => {
     function syncRequestedProfiles() {
@@ -197,7 +230,11 @@ export default function UserCard({
     }
   }, [])
 
-  const requestButton = getRequestButtonState(requestStatus, requested)
+  const requestButton = getRequestButtonState(
+    requestStatus,
+    requested,
+    requestedActionLabel
+  )
   const cardClickable = Boolean(onProfileClick && clickableCard)
 
   return (
@@ -342,18 +379,19 @@ export default function UserCard({
                 <Pencil className="size-4" />
                 Edit profile
               </Button>
-            ) : showRequestMenu ? (
+            ) : incomingRequestId ? null : showRequestMenu ? (
               <RequestActionGroup
-                disabled={requestButton.disabled}
-                icon={requestButton.icon}
-                label={requestButton.label}
+                disabled={actionOverride?.disabled ?? requestButton.disabled}
+                icon={actionOverride?.icon ?? requestButton.icon}
+                label={actionOverride?.label ?? requestButton.label}
                 name={name}
                 onHideProfile={onHideProfile}
-                onMainClick={toggleRequest}
+                onMainClick={actionOverride?.onClick ?? toggleRequest}
                 onProfileClick={onProfileClick}
                 onSaveProfile={onSaveProfile}
-                savedLabel="Save"
-                variant={requestButton.variant}
+                savedLabel={isSaved ? "Unsave" : menuSaveLabel}
+                showProfileMenuItem={showProfileMenuItem}
+                variant={actionOverride?.variant ?? requestButton.variant}
                 loading={requestLoading}
               />
             ) : (
@@ -440,6 +478,7 @@ function RequestActionGroup({
   onProfileClick,
   onSaveProfile,
   savedLabel,
+  showProfileMenuItem,
   variant,
   loading,
 }: {
@@ -452,6 +491,7 @@ function RequestActionGroup({
   onProfileClick?: () => void
   onSaveProfile?: () => void
   savedLabel: string
+  showProfileMenuItem: boolean
   variant: "default" | "secondary"
   loading?: boolean
 }) {
@@ -463,12 +503,16 @@ function RequestActionGroup({
       onClick: onSaveProfile,
       tone: "normal" as const,
     },
-    {
-      icon: <UserRound className="size-4" />,
-      label: "Profile",
-      onClick: onProfileClick,
-      tone: "normal" as const,
-    },
+    ...(showProfileMenuItem
+      ? [
+          {
+            icon: <UserRound className="size-4" />,
+            label: "Profile",
+            onClick: onProfileClick,
+            tone: "normal" as const,
+          },
+        ]
+      : []),
     {
       icon: <UserRound className="size-4" />,
       label: "Hide profile",
@@ -540,7 +584,8 @@ function RequestActionGroup({
 
 function getRequestButtonState(
   status: "accepted" | "rejected" | undefined,
-  requested: boolean
+  requested: boolean,
+  requestedActionLabel: string
 ) {
   if (status === "accepted") {
     return {
@@ -563,8 +608,8 @@ function getRequestButtonState(
   if (requested) {
     return {
       disabled: false,
-      icon: <X className="size-4" />,
-      label: "Cancel request",
+      icon: <Bookmark className="size-4" />,
+      label: requestedActionLabel,
       variant: "secondary" as const,
     }
   }
@@ -654,4 +699,29 @@ function getPreviewOccupation(seed?: string) {
     .reduce((sum, char) => sum + char.charCodeAt(0), 0)
 
   return occupations[total % occupations.length]
+}
+
+function getSavedLikedProfileKeys() {
+  if (typeof window === "undefined") return []
+
+  try {
+    const raw = localStorage.getItem(LIKED_PROFILES_STORAGE_KEY)
+    const users = raw ? JSON.parse(raw) : []
+
+    return Array.isArray(users)
+      ? users
+          .filter(
+            (item): item is User =>
+              Boolean(
+                item &&
+                  typeof item === "object" &&
+                  item.name?.first &&
+                  item.name?.last
+              )
+          )
+          .map((item) => getProfileKey(item))
+      : []
+  } catch {
+    return []
+  }
 }

@@ -3,9 +3,9 @@
 import type { ReactNode } from "react"
 import {
   Bell,
-  Bookmark,
   ChevronRight,
-  LayoutGrid,
+  Compass,
+  HeartHandshake,
   PanelLeftClose,
   PanelLeftOpen,
   UserRound,
@@ -16,28 +16,30 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 
-type SidebarItem = "discover" | "notifications" | "saved" | "me"
+type SidebarItem =
+  | "discover"
+  | "connections"
+  | "notifications"
+  | "me"
 
 export default function AppSidebar({
   activeItem,
   collapsed = false,
+  onConnections,
   onClose,
   onDiscover,
   onMe,
   onNotifications,
-  onSaved,
   notificationCount = 0,
-  savedCount = 0,
 }: {
   activeItem: SidebarItem
   collapsed?: boolean
+  onConnections: () => void
   onClose: () => void
   onDiscover: () => void
   onMe: () => void
   onNotifications: () => void
-  onSaved: () => void
   notificationCount?: number
-  savedCount?: number
 }) {
   return (
     <aside
@@ -87,9 +89,17 @@ export default function AppSidebar({
                 active={activeItem === "discover"}
                 collapsed={collapsed}
                 description="Browse partner profiles"
-                icon={<LayoutGrid className="size-4" />}
+                icon={<Compass className="size-4" />}
                 label="Discover"
                 onClick={onDiscover}
+              />
+              <SidebarButton
+                active={activeItem === "connections"}
+                collapsed={collapsed}
+                description="Accepted matches"
+                icon={<HeartHandshake className="size-4" />}
+                label="Connections"
+                onClick={onConnections}
               />
               <SidebarButton
                 active={activeItem === "notifications"}
@@ -99,15 +109,6 @@ export default function AppSidebar({
                 icon={<Bell className="size-4" />}
                 label="Notifications"
                 onClick={onNotifications}
-              />
-              <SidebarButton
-                active={activeItem === "saved"}
-                badge={savedCount}
-                collapsed={collapsed}
-                description="Likes and requested profiles"
-                icon={<Bookmark className="size-4" />}
-                label="Saved"
-                onClick={onSaved}
               />
               <SidebarButton
                 active={activeItem === "me"}
@@ -176,9 +177,9 @@ function SidebarButton({
         </span>
         {!collapsed ? (
           <span className="min-w-0 flex-1">
-            <span className="flex items-center gap-2">
+              <span className="flex items-center gap-2">
               <span className="truncate text-sm font-semibold">{label}</span>
-              {typeof badge === "number" ? (
+              {typeof badge === "number" && badge > 0 ? (
                 <Badge variant="secondary" className="rounded-full px-2 py-0">
                   {badge}
                 </Badge>

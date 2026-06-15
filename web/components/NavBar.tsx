@@ -5,10 +5,10 @@ import {
   Bell,
   Bookmark,
   Check,
+  Compass,
   Globe,
   HeartHandshake,
   Info,
-  LayoutGrid,
   Link,
   LogIn,
   LogOut,
@@ -48,8 +48,8 @@ import { cn } from "@/lib/utils"
 
 type SignedInTab =
   | "discover"
+  | "connections"
   | "notifications"
-  | "saved"
   | "me"
   | "profile"
 
@@ -58,6 +58,7 @@ type Props = {
   prefs: { name?: string; location?: string } | null
   userImage?: string | null
   onDiscover?: () => void
+  onConnections?: () => void
   onEditProfile: () => void
   onHome: () => void
   onNotifications?: () => void
@@ -75,6 +76,7 @@ export default function NavBar({
   prefs,
   userImage,
   onDiscover,
+  onConnections,
   onEditProfile,
   onHome,
   onNotifications,
@@ -177,6 +179,7 @@ export default function NavBar({
                   location={prefs.location}
                   avatarSrc={userImage ?? undefined}
                   onEditProfile={onEditProfile}
+                  onSaved={onSaved}
                   onViewProfile={onViewProfile}
                   onSignOut={onSignOut}
                 />
@@ -191,9 +194,15 @@ export default function NavBar({
           <div className="mx-auto flex max-w-xl items-center justify-between rounded-[2rem] border border-white/60 bg-background/88 p-2 shadow-[0_24px_60px_rgba(15,23,42,0.18)] backdrop-blur-2xl dark:border-white/10 dark:shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
             <BottomNavButton
               active={activeTab === "discover"}
-              icon={<LayoutGrid className="size-5" />}
+              icon={<Compass className="size-5" />}
               label="Discover"
               onClick={onDiscover ?? onHome}
+            />
+            <BottomNavButton
+              active={activeTab === "connections"}
+              icon={<HeartHandshake className="size-5" />}
+              label="Connections"
+              onClick={onConnections}
             />
             <BottomNavButton
               active={activeTab === "notifications"}
@@ -201,12 +210,6 @@ export default function NavBar({
               icon={<Bell className="size-5" />}
               label="Notifications"
               onClick={onNotifications}
-            />
-            <BottomNavButton
-              active={activeTab === "saved"}
-              icon={<Bookmark className="size-5" />}
-              label="Saved"
-              onClick={onSaved}
             />
             <BottomNavButton
               active={activeTab === "me"}
@@ -479,6 +482,7 @@ function MenuAvatar({
   avatarSrc,
   name,
   onEditProfile,
+  onSaved,
   onViewProfile,
   onSignOut,
 }: {
@@ -486,6 +490,7 @@ function MenuAvatar({
   location?: string
   name?: string
   onEditProfile: () => void
+  onSaved?: () => void
   onViewProfile: () => void
   onSignOut: () => void
 }) {
@@ -549,6 +554,14 @@ function MenuAvatar({
                 onClick={() => {
                   setDesktopOpen(false)
                   onViewProfile()
+                }}
+              />
+              <MenuButton
+                icon={<Bookmark className="size-4" />}
+                label="Saved"
+                onClick={() => {
+                  setDesktopOpen(false)
+                  onSaved?.()
                 }}
               />
               <MenuButton
@@ -625,6 +638,14 @@ function MenuAvatar({
                 onClick={() => {
                   setMobileOpen(false)
                   onViewProfile()
+                }}
+              />
+              <MobileMenuButton
+                icon={<Bookmark className="size-4" />}
+                label="Saved"
+                onClick={() => {
+                  setMobileOpen(false)
+                  onSaved?.()
                 }}
               />
               <MobileMenuButton

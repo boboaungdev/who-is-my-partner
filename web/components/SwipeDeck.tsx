@@ -59,15 +59,36 @@ export default function SwipeDeck({
   const lastAutoLoadUserCountRef = React.useRef(0)
 
   const safeUsers = users.filter(isCardUser)
-  const hiddenProfileKeys = React.useMemo(
-    () => new Set([...likedUsers.map(getProfileKey), ...seenProfileKeys]),
-    [likedUsers, seenProfileKeys]
-  )
+  const preferredCurrent = safeUsers[idx]
+  const preferredCurrentKey = preferredCurrent
+    ? getProfileKey(preferredCurrent)
+    : undefined
+  const hiddenProfileKeys = React.useMemo(() => {
+    const hidden = new Set(seenProfileKeys)
+
+    likedUsers.forEach((user) => {
+      const profileKey = getProfileKey(user)
+      if (profileKey !== preferredCurrentKey) {
+        hidden.add(profileKey)
+      }
+    })
+
+    return hidden
+  }, [likedUsers, preferredCurrentKey, seenProfileKeys])
   const deckUsers = safeUsers.filter(
     (user) => !hiddenProfileKeys.has(getProfileKey(user))
   )
-  const current = deckUsers[idx]
-  const stackUsers = getStackUsers(deckUsers, idx)
+  const current =
+    deckUsers.find((user) => getProfileKey(user) === preferredCurrentKey) ??
+    deckUsers[idx] ??
+    deckUsers[0]
+  const activeIndex = current
+    ? Math.max(
+        0,
+        deckUsers.findIndex((user) => getProfileKey(user) === getProfileKey(current))
+      )
+    : 0
+  const stackUsers = getStackUsers(deckUsers, activeIndex)
 
   React.useEffect(() => {
     if (idx >= deckUsers.length) setIdx(0)
