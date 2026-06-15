@@ -1274,16 +1274,16 @@ function MarketingHome({
 
       <section className="grid gap-4 md:grid-cols-3">
         <LandingFeature
-          title="Set your profile"
-          detail="Choose your details, country, city, birthday, and optional avatar before the dashboard appears."
+          title="Complete your profile"
+          detail="Add a photo, short bio, location, and birthday so others see a clear, friendly profile."
         />
         <LandingFeature
-          title="Tune preferences"
-          detail="Pick the partner ages and genders you want the matching flow to respect."
+          title="Customize discovery"
+          detail="Set preferred ages, genders, and distance to focus on matches that matter to you."
         />
         <LandingFeature
-          title="Browse the dashboard"
-          detail="Review real-looking profiles with photos, location, contact details, and matching context."
+          title="How matching works"
+          detail="Learn how profiles are surfaced, what information is shared, and tips for safe, respectful contact."
         />
       </section>
     </div>

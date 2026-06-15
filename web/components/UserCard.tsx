@@ -15,6 +15,7 @@ import {
   MessageCircle,
   Pencil,
   Send,
+  Loader2,
   UserRound,
   Venus,
   VenusAndMars,
@@ -97,7 +98,11 @@ export default function UserCard({
   user: User
 }) {
   const name = `${user.name.first} ${user.name.last}`
-  const location = [user.location.city, user.location.state, user.location.country]
+  const location = [
+    user.location.city,
+    user.location.state,
+    user.location.country,
+  ]
     .filter(Boolean)
     .join(", ")
   const displayHomeCountry = homeCountry ?? user.nat ?? user.location.country
@@ -105,13 +110,17 @@ export default function UserCard({
   const badgeSeed = user.login?.uuid ?? username
   const profileBadges = getProfileBadges(badgeSeed)
   const age = user.dob?.age ? `${user.dob.age} yrs` : "Age hidden"
-  const displayOccupation = occupation || getPreviewOccupation(badgeSeed ?? name)
-  const lookingFor = relationshipLabel || getProfileLookingFor(badgeSeed ?? name)
+  const displayOccupation =
+    occupation || getPreviewOccupation(badgeSeed ?? name)
+  const lookingFor =
+    relationshipLabel || getProfileLookingFor(badgeSeed ?? name)
   const profileKey = getProfileKey(user)
   const [requestedProfiles, setRequestedProfiles] = React.useState<string[]>([])
   const [requestStatus, setRequestStatus] = React.useState<
     "accepted" | "rejected" | undefined
   >()
+  const [requestLoading, setRequestLoading] = React.useState(false)
+  const requestTimerRef = React.useRef<number | null>(null)
   const requested = requestedProfiles.includes(profileKey)
 
   React.useEffect(() => {
@@ -122,7 +131,10 @@ export default function UserCard({
     syncRequestedProfiles()
     window.addEventListener(REQUESTED_PROFILES_EVENT, syncRequestedProfiles)
     return () =>
-      window.removeEventListener(REQUESTED_PROFILES_EVENT, syncRequestedProfiles)
+      window.removeEventListener(
+        REQUESTED_PROFILES_EVENT,
+        syncRequestedProfiles
+      )
   }, [])
 
   React.useEffect(() => {
@@ -139,17 +151,35 @@ export default function UserCard({
   function toggleRequest() {
     if (requestStatus) return
 
-    const next = requested
-      ? requestedProfiles.filter((key) => key !== profileKey)
-      : [...requestedProfiles, profileKey]
-
-    saveRequestedProfiles(next)
-    setRequestedProfiles(next)
-    if (!requested) {
-      scheduleFakeRequestOutcome(user)
-      onRequestSent?.()
+    if (requested) {
+      const next = requestedProfiles.filter((key) => key !== profileKey)
+      saveRequestedProfiles(next)
+      setRequestedProfiles(next)
+      return
     }
+
+    // show loading state for 1s, then persist request and notify parent
+    setRequestLoading(true)
+    // use window.setTimeout to get a numeric id (Node timeout types differ)
+    requestTimerRef.current = window.setTimeout(() => {
+      const next = [...requestedProfiles, profileKey]
+      saveRequestedProfiles(next)
+      setRequestedProfiles(next)
+      scheduleFakeRequestOutcome(user)
+      setRequestLoading(false)
+      onRequestSent?.()
+      requestTimerRef.current = null
+    }, 1000) as unknown as number
   }
+
+  React.useEffect(() => {
+    return () => {
+      if (requestTimerRef.current) {
+        window.clearTimeout(requestTimerRef.current)
+        requestTimerRef.current = null
+      }
+    }
+  }, [])
 
   const requestButton = getRequestButtonState(requestStatus, requested)
 
@@ -187,10 +217,7 @@ export default function UserCard({
         <div className="mt-4 min-w-0">
           <div className="flex min-w-0 items-center justify-center gap-2">
             <h2 className="truncate text-xl font-semibold">{name}</h2>
-            <ProfileStatusIcons
-              badges={profileBadges}
-              iconClassName="size-5"
-            />
+            <ProfileStatusIcons badges={profileBadges} iconClassName="size-5" />
           </div>
 
           <p className="mt-1 truncate text-sm text-muted-foreground">
@@ -283,15 +310,20 @@ export default function UserCard({
                 name={name}
                 onMainClick={toggleRequest}
                 variant={requestButton.variant}
+                loading={requestLoading}
               />
             ) : (
               <Button
                 className="gap-2"
                 variant={requestButton.variant}
                 onClick={toggleRequest}
-                disabled={requestButton.disabled}
+                disabled={requestButton.disabled || requestLoading}
               >
-                {requestButton.icon}
+                {requestLoading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  requestButton.icon
+                )}
                 <span className="truncate">{requestButton.label}</span>
               </Button>
             )}
@@ -309,6 +341,7 @@ function RequestActionGroup({
   name,
   onMainClick,
   variant,
+  loading,
 }: {
   disabled: boolean
   icon: React.ReactNode
@@ -316,6 +349,7 @@ function RequestActionGroup({
   name: string
   onMainClick: () => void
   variant: "default" | "secondary"
+  loading?: boolean
 }) {
   const [open, setOpen] = React.useState(false)
   const menuItems = [
@@ -343,9 +377,9 @@ function RequestActionGroup({
         className="min-w-0 flex-1 gap-2 rounded-r-none"
         variant={variant}
         onClick={onMainClick}
-        disabled={disabled}
+        disabled={disabled || loading}
       >
-        {icon}
+        {loading ? <Loader2 className="size-4 animate-spin" /> : icon}
         <span className="truncate">{label}</span>
       </Button>
       <Popover open={open} onOpenChange={setOpen}>
@@ -353,7 +387,7 @@ function RequestActionGroup({
           <Button
             type="button"
             variant={variant}
-            disabled={disabled}
+            disabled={disabled || loading}
             aria-label={`More actions for ${name}`}
             className="w-10 rounded-l-none border-l border-background/25 px-0"
           >
