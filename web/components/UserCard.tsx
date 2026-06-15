@@ -3,7 +3,10 @@
 import * as React from "react"
 import Image from "next/image"
 import {
+  Ban,
   BriefcaseBusiness,
+  ChevronDown,
+  Flag,
   HeartHandshake,
   House,
   Languages,
@@ -18,6 +21,11 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import ProfileStatusIcons from "@/components/ProfileStatusIcons"
 import { getProfileBadges } from "@/lib/profile-badges"
 import { getProfileLookingFor } from "@/lib/profile-looking-for"
@@ -64,6 +72,7 @@ export default function UserCard({
   languages = [],
   onProfileClick,
   onRequestSent,
+  showRequestMenu = false,
   showActions = true,
   user,
 }: {
@@ -74,6 +83,7 @@ export default function UserCard({
   languages?: string[]
   onProfileClick?: () => void
   onRequestSent?: () => void
+  showRequestMenu?: boolean
   showActions?: boolean
   user: User
 }) {
@@ -142,16 +152,6 @@ export default function UserCard({
       )}
     >
       <div className="relative h-28 overflow-hidden bg-muted">
-        {countryFlagUrl ? (
-          <span className="absolute right-3 top-3 z-10 flex items-center justify-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={countryFlagUrl}
-              alt=""
-              className="h-6 w-8 rounded-[2px] object-cover shadow-sm"
-            />
-          </span>
-        ) : null}
         <Image
           src={user.picture.large}
           alt=""
@@ -181,7 +181,6 @@ export default function UserCard({
             <ProfileStatusIcons
               badges={profileBadges}
               iconClassName="size-5"
-              seed={badgeSeed}
             />
           </div>
 
@@ -201,6 +200,14 @@ export default function UserCard({
               {getGenderIcon(user.gender)}
             </span>
             <span className="text-muted-foreground">{age}</span>
+            {countryFlagUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={countryFlagUrl}
+                alt=""
+                className="h-4 w-6 shrink-0 rounded-[2px] object-cover shadow-sm"
+              />
+            ) : null}
           </div>
         </div>
 
@@ -238,7 +245,12 @@ export default function UserCard({
         </div>
 
         {showActions ? (
-          <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          <div
+            className={cn(
+              "mt-5 grid gap-2",
+              !hideProfileButton && "sm:grid-cols-2"
+            )}
+          >
             {!hideProfileButton ? (
               <Button
                 variant="outline"
@@ -249,19 +261,110 @@ export default function UserCard({
                 Profile
               </Button>
             ) : null}
-            <Button
-              className="gap-2"
-              variant={requestButton.variant}
-              onClick={toggleRequest}
-              disabled={requestButton.disabled}
-            >
-              {requestButton.icon}
-              <span className="truncate">{requestButton.label}</span>
-            </Button>
+            {showRequestMenu ? (
+              <RequestActionGroup
+                disabled={requestButton.disabled}
+                icon={requestButton.icon}
+                label={requestButton.label}
+                name={name}
+                onMainClick={toggleRequest}
+                variant={requestButton.variant}
+              />
+            ) : (
+              <Button
+                className="gap-2"
+                variant={requestButton.variant}
+                onClick={toggleRequest}
+                disabled={requestButton.disabled}
+              >
+                {requestButton.icon}
+                <span className="truncate">{requestButton.label}</span>
+              </Button>
+            )}
           </div>
         ) : null}
       </div>
     </article>
+  )
+}
+
+function RequestActionGroup({
+  disabled,
+  icon,
+  label,
+  name,
+  onMainClick,
+  variant,
+}: {
+  disabled: boolean
+  icon: React.ReactNode
+  label: string
+  name: string
+  onMainClick: () => void
+  variant: "default" | "secondary"
+}) {
+  const [open, setOpen] = React.useState(false)
+  const menuItems = [
+    {
+      icon: <Ban className="size-4" />,
+      label: "Block profile",
+      tone: "danger" as const,
+    },
+    {
+      icon: <Flag className="size-4" />,
+      label: "Report profile",
+      tone: "danger" as const,
+    },
+    {
+      icon: <UserRound className="size-4" />,
+      label: "Hide profile",
+      tone: "normal" as const,
+    },
+  ]
+
+  return (
+    <div className="flex min-w-0 overflow-hidden rounded-md">
+      <Button
+        type="button"
+        className="min-w-0 flex-1 gap-2 rounded-r-none"
+        variant={variant}
+        onClick={onMainClick}
+        disabled={disabled}
+      >
+        {icon}
+        <span className="truncate">{label}</span>
+      </Button>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant={variant}
+            disabled={disabled}
+            aria-label={`More actions for ${name}`}
+            className="w-10 rounded-l-none border-l border-background/25 px-0"
+          >
+            <ChevronDown className="size-4" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-48 p-1">
+          {menuItems.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              onClick={() => setOpen(false)}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition hover:bg-muted",
+                item.tone === "danger" &&
+                  "text-destructive hover:bg-destructive/10 hover:text-destructive"
+              )}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </PopoverContent>
+      </Popover>
+    </div>
   )
 }
 

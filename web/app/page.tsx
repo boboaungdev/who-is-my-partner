@@ -590,7 +590,6 @@ export default function Page() {
         ) : view === "profile" && selectedUser ? (
           <SavedUserProfile
             countryMeta={countryMeta}
-            prefs={prefs}
             user={selectedUser}
             onBack={goDeck}
           />
@@ -1018,7 +1017,6 @@ function CarouselProfileCard({
             <ProfileStatusIcons
               badges={profileBadges}
               iconClassName={active ? "size-5" : "size-4"}
-              seed={badgeSeed}
             />
           </div>
           <p className="mt-1 truncate text-sm text-muted-foreground">
@@ -1184,12 +1182,10 @@ function getPreviewOccupation(seed?: string) {
 
 function SavedUserProfile({
   countryMeta,
-  prefs,
   user,
   onBack,
 }: {
   countryMeta: Record<string, CountryMeta>
-  prefs: Prefs
   user: RandomUser
   onBack: () => void
 }) {
@@ -1213,114 +1209,33 @@ function SavedUserProfile({
   const name = `${user.name.first} ${user.name.last}`
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,520px)_minmax(280px,1fr)]">
-      <section>
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">
-              Saved profile
-            </p>
-            <h1 className="text-2xl font-semibold">{name}</h1>
-          </div>
-          <Button variant="outline" onClick={onBack}>
-            Back to dashboard
-          </Button>
-        </div>
-        <UserCard
-          countryFlagUrl={
-            getCountryFlagUrl(user.nat, countryMeta) ??
-            getCountryFlagUrl(user.location.country, countryMeta)
-          }
-          hideProfileButton
-          homeCountry={
-            getCountryName(user.nat, countryMeta) ?? user.location.country
-          }
-          languages={getCountryLanguages(user.location.country, countryMeta)}
-          user={user}
-        />
-      </section>
-
-      <aside className="space-y-4">
-        <Card className="p-5">
-          <h2 className="font-semibold">Your setup</h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            This profile was saved before setup, then shown again after your
-            profile was completed.
+    <section className="mx-auto w-full max-w-[520px]">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">
+            Saved profile
           </p>
-          <div className="mt-4 grid gap-3">
-            <ProfileSummary label="You" value={prefs.name} />
-            <ProfileSummary
-              label="Current location"
-              value={prefs.location ?? "Not set"}
-            />
-            <ProfileSummary
-              label="Home country"
-              value={prefs.homeCountry ?? prefs.country ?? "Not set"}
-            />
-            <ProfileSummary label="Age" value={String(prefs.age)} />
-            <ProfileSummary
-              label="Marital status"
-              value={getMaritalStatusLabel(prefs.maritalStatus)}
-            />
-            <ProfileSummary
-              label="Languages"
-              value={
-                prefs.languages?.length ? prefs.languages.join(", ") : "Not set"
-              }
-            />
-            <ProfileSummary
-              label="Looking for"
-              value={getRelationshipGoalLabel(prefs.relationshipGoal)}
-            />
-          </div>
-        </Card>
-      </aside>
-    </div>
+          <h1 className="text-2xl font-semibold">{name}</h1>
+        </div>
+        <Button variant="outline" onClick={onBack}>
+          Back to dashboard
+        </Button>
+      </div>
+      <UserCard
+        countryFlagUrl={
+          getCountryFlagUrl(user.nat, countryMeta) ??
+          getCountryFlagUrl(user.location.country, countryMeta)
+        }
+        hideProfileButton
+        homeCountry={
+          getCountryName(user.nat, countryMeta) ?? user.location.country
+        }
+        languages={getCountryLanguages(user.location.country, countryMeta)}
+        showRequestMenu
+        user={user}
+      />
+    </section>
   )
-}
-
-function ProfileSummary({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border bg-muted/35 p-3">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm font-semibold capitalize">{value}</p>
-    </div>
-  )
-}
-
-function getRelationshipGoalLabel(value?: string) {
-  switch (value) {
-    case "long-term":
-    case "serious":
-      return "Long-term partner"
-    case "meaningful-dates":
-      return "Meaningful dates"
-    case "friendship-first":
-    case "friendship":
-      return "Friendship first"
-    case "exploring":
-    case "open":
-      return "Still exploring"
-    case "casual":
-      return "Casual dating"
-    default:
-      return "Not set"
-  }
-}
-
-function getMaritalStatusLabel(value?: string) {
-  switch (value) {
-    case "single":
-      return "Single"
-    case "divorced":
-      return "Divorced"
-    case "separated":
-      return "Separated"
-    case "widowed":
-      return "Widowed"
-    default:
-      return "Not set"
-  }
 }
 
 function isProfileUser(user: RandomUser): user is User {

@@ -70,6 +70,7 @@ type DeckUser = {
 }
 
 const AUTO_LOAD_THRESHOLD = 10
+const SEEN_PROFILES_STORAGE_KEY = "wimp:seen-profile-keys:v1"
 
 export default function SwipeDeck({
   getCountryFlagUrl,
@@ -137,6 +138,7 @@ export default function SwipeDeck({
   React.useEffect(() => {
     setLikedUsers(getSavedProfiles("wimp:liked-users:v1"))
     setRequestedProfiles(getSavedRequestedProfiles())
+    setSeenProfileKeys(getSavedProfileKeys(SEEN_PROFILES_STORAGE_KEY))
     setRestored(true)
   }, [])
 
@@ -155,16 +157,26 @@ export default function SwipeDeck({
     saveProfiles("wimp:liked-users:v1", likedUsers)
   }, [likedUsers, restored])
 
+  React.useEffect(() => {
+    if (!restored) return
+    saveProfileKeys(SEEN_PROFILES_STORAGE_KEY, seenProfileKeys)
+  }, [restored, seenProfileKeys])
+
+  function markProfileSeen(user: User) {
+    const profileKey = getProfileKey(user)
+
+    setSeenProfileKeys((keys) =>
+      keys.includes(profileKey) ? keys : [...keys, profileKey]
+    )
+  }
+
   function next(action?: "like" | "skip") {
     if (action === "like" && current) {
       setLikedUsers((users) => addUniqueProfile(users, current))
     }
 
     if (current) {
-      const currentKey = getProfileKey(current)
-      setSeenProfileKeys((keys) =>
-        keys.includes(currentKey) ? keys : [...keys, currentKey]
-      )
+      markProfileSeen(current)
     }
 
     setIdx(0)
@@ -175,6 +187,7 @@ export default function SwipeDeck({
 
   function restartViewedProfiles() {
     setSeenProfileKeys([])
+    saveProfileKeys(SEEN_PROFILES_STORAGE_KEY, [])
     setIdx(0)
   }
 
@@ -184,6 +197,7 @@ export default function SwipeDeck({
     setIdx(0)
     try {
       localStorage.setItem("wimp:liked-users:v1", "[]")
+      localStorage.setItem(SEEN_PROFILES_STORAGE_KEY, "[]")
     } catch {
       // ignore storage failures
     }
@@ -295,7 +309,10 @@ export default function SwipeDeck({
               countryFlagUrl={getCountryFlagUrl?.(item.user)}
               homeCountry={getHomeCountry?.(item.user)}
               languages={getLanguages?.(item.user) ?? []}
-              onProfileClick={() => onViewProfile?.(item.user)}
+              onProfileClick={() => {
+                markProfileSeen(item.user)
+                onViewProfile?.(item.user)
+              }}
               onRequestSent={() => next("skip")}
               showActions={item.position === "active"}
               user={item.user}
@@ -483,6 +500,28 @@ function getSavedProfiles(key: string, fallbackKey?: string) {
 function saveProfiles(key: string, users: User[]) {
   try {
     localStorage.setItem(key, JSON.stringify(users))
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function getSavedProfileKeys(key: string) {
+  if (typeof window === "undefined") return []
+
+  try {
+    const raw = localStorage.getItem(key)
+    const keys = raw ? JSON.parse(raw) : []
+    return Array.isArray(keys)
+      ? keys.filter((item): item is string => typeof item === "string")
+      : []
+  } catch {
+    return []
+  }
+}
+
+function saveProfileKeys(key: string, keys: string[]) {
+  try {
+    localStorage.setItem(key, JSON.stringify(Array.from(new Set(keys))))
   } catch {
     // ignore storage failures
   }
