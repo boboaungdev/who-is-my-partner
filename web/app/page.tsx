@@ -2,8 +2,11 @@
 
 import * as React from "react"
 import { useEffect, useMemo, useState } from "react"
+import Image from "next/image"
 import {
   ArrowRight,
+  ArrowDownLeft,
+  ArrowUpRight,
   Bell,
   Bookmark,
   BriefcaseBusiness,
@@ -69,7 +72,7 @@ import {
   respondToIncomingRequest,
   type RequestNotification,
 } from "@/lib/request-notifications"
-import { getProfileKey } from "@/lib/profile-requests"
+import { getProfileKey, saveRequestedProfiles } from "@/lib/profile-requests"
 import { cn } from "@/lib/utils"
 
 type RandomUser = {
@@ -2286,6 +2289,33 @@ function ConnectionsView({
         ),
     [incomingNotifications]
   )
+  const connectionTabs = [
+    {
+      id: "accepted" as const,
+      label: "Matches",
+      Icon: CheckCircle2,
+      count: 0,
+      onClick: onOpenAccepted,
+      badgeClassName: "",
+    },
+    {
+      id: "incoming" as const,
+      label: "Incoming",
+      Icon: ArrowDownLeft,
+      count: counts.incoming,
+      onClick: onOpenIncoming,
+      badgeClassName:
+        "bg-primary/12 text-primary ring-1 ring-primary/15 dark:bg-primary/18",
+    },
+    {
+      id: "requested" as const,
+      label: "Sent",
+      Icon: ArrowUpRight,
+      count: counts.requests,
+      onClick: onOpenRequested,
+      badgeClassName: "bg-background/80 text-muted-foreground ring-1 ring-border/70",
+    },
+  ]
 
   return (
     <section className="mx-auto w-full max-w-4xl space-y-5">
@@ -2293,56 +2323,74 @@ function ConnectionsView({
         <h1 className="text-2xl font-semibold">Connections</h1>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant={currentSection === "accepted" ? "default" : "outline"}
-          onClick={onOpenAccepted}
-          className="rounded-full"
-        >
-          Accepted
-        </Button>
-        <Button
-          type="button"
-          variant={currentSection === "incoming" ? "default" : "outline"}
-          onClick={onOpenIncoming}
-          className="rounded-full"
-        >
-          Incoming
-          {counts.incoming > 0 ? (
-            <Badge variant="secondary" className="ml-2 rounded-full px-2 py-0">
-              {counts.incoming}
-            </Badge>
-          ) : null}
-        </Button>
-        <Button
-          type="button"
-          variant={currentSection === "requested" ? "default" : "outline"}
-          onClick={onOpenRequested}
-          className="rounded-full"
-        >
-          Requested
-          {counts.requests > 0 ? (
-            <Badge variant="secondary" className="ml-2 rounded-full px-2 py-0">
-              {counts.requests}
-            </Badge>
-          ) : null}
-        </Button>
+      <div className="inline-flex w-full max-w-[32rem] gap-1 rounded-[1.5rem] border border-border/60 bg-muted/35 p-1.5 shadow-sm">
+        {connectionTabs.map(({ id, label, Icon, count, onClick, badgeClassName }) => {
+          const active = currentSection === id
+
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={onClick}
+              className={cn(
+                "flex min-w-0 items-center justify-center gap-1.5 rounded-[1.1rem] px-2.5 py-3 text-xs font-medium transition sm:flex-1 sm:gap-2 sm:px-4 sm:text-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40",
+                active
+                  ? "flex-[1.4] bg-background text-foreground shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
+                  : "flex-1 text-muted-foreground hover:bg-background/70 hover:text-foreground"
+              )}
+              aria-pressed={active}
+              aria-label={label}
+            >
+              <Icon className={cn("size-4", active ? "text-primary" : "text-muted-foreground")} />
+              <span className={cn("hidden whitespace-nowrap sm:inline", active && "inline sm:inline")}>
+                {label}
+              </span>
+              {count > 0 ? (
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "shrink-0 rounded-full px-1.5 py-0 text-[10px] font-semibold leading-5 shadow-none sm:px-2 sm:text-[11px]",
+                    active ? "bg-primary text-primary-foreground" : badgeClassName
+                  )}
+                >
+                  {count}
+                </Badge>
+              ) : null}
+            </button>
+          )
+        })}
       </div>
 
       {currentSection === "incoming" ? (
         incomingUsers.length ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="overflow-hidden rounded-[1.75rem] border border-border/60 bg-card/95 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur dark:shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
             {incomingUsers.map(({ notification, user }) => (
-              <UserCard
+              <ConnectionInboxItem
                 key={notification.id}
-                clickableCard
-                incomingRequestId={notification.id}
-                incomingRequestStatus={notification.status}
-                onProfileClick={() => onOpenProfile(user)}
-                onRespondToIncomingRequest={respondToIncomingRequest}
-                showActions
                 user={user}
+                title="Sent you a request"
+                badgeLabel="Needs reply"
+                badgeVariant="warm"
+                onOpenProfile={() => onOpenProfile(user)}
+                actions={
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => respondToIncomingRequest(notification.id, "rejected")}
+                    >
+                      Decline
+                    </Button>
+                    <Button
+                      type="button"
+                      className="rounded-full"
+                      onClick={() => respondToIncomingRequest(notification.id, "accepted")}
+                    >
+                      Accept
+                    </Button>
+                  </>
+                }
               />
             ))}
           </div>
@@ -2359,18 +2407,41 @@ function ConnectionsView({
         )
       ) : currentSection === "requested" ? (
         requestedUsers.length ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="overflow-hidden rounded-[1.75rem] border border-border/60 bg-card/95 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur dark:shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
             {requestedUsers.map((user) => (
-              <UserCard
+              <ConnectionInboxItem
                 key={getProfileKey(user)}
-                clickableCard
-                menuSaveLabel="Save"
-                onProfileClick={() => onOpenProfile(user)}
-                onSaveProfile={() => toggleSavedProfileInStorage(user)}
-                requestedActionLabel="Cancel request"
-                showActions
-                showRequestMenu
                 user={user}
+                title="Waiting for their reply"
+                badgeLabel="Pending"
+                badgeVariant="outline"
+                onOpenProfile={() => onOpenProfile(user)}
+                actions={
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-full"
+                      onClick={() =>
+                        saveRequestedProfiles(
+                          getPendingRequestedProfileKeys().filter(
+                            (key) => key !== getProfileKey(user)
+                          )
+                        )
+                      }
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="rounded-full"
+                      onClick={() => onOpenProfile(user)}
+                    >
+                      View
+                    </Button>
+                  </>
+                }
               />
             ))}
           </div>
@@ -2386,21 +2457,30 @@ function ConnectionsView({
           </Card>
         )
       ) : connections.length ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="overflow-hidden rounded-[1.75rem] border border-border/60 bg-card/95 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur dark:shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
           {connections.map((user) => (
-            <UserCard
-              actionOverride={{
-                icon: <Mail className="size-4" />,
-                label: "Message",
-                variant: "default",
-              }}
+            <ConnectionInboxItem
               key={getProfileKey(user)}
-              clickableCard
-              onProfileClick={() => onOpenProfile(user)}
-              onSaveProfile={() => toggleSavedProfileInStorage(user)}
-              showActions
-              showRequestMenu
               user={user}
+              title="You matched with each other"
+              badgeLabel="Matched"
+              badgeVariant="success"
+              onOpenProfile={() => onOpenProfile(user)}
+              actions={
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-full"
+                    onClick={() => onOpenProfile(user)}
+                  >
+                    View
+                  </Button>
+                  <Button type="button" className="rounded-full">
+                    Message
+                  </Button>
+                </>
+              }
             />
           ))}
         </div>
@@ -2416,6 +2496,75 @@ function ConnectionsView({
         </Card>
       )}
     </section>
+  )
+}
+
+function ConnectionInboxItem({
+  user,
+  title,
+  badgeLabel,
+  badgeVariant,
+  onOpenProfile,
+  actions,
+}: {
+  user: User
+  title: string
+  badgeLabel: string
+  badgeVariant: "outline" | "success" | "warm"
+  onOpenProfile: () => void
+  actions: React.ReactNode
+}) {
+  const name = `${user.name.first} ${user.name.last}`
+  const username = user.login?.username ? `@${user.login.username}` : null
+  const location = [user.location.city, user.location.country].filter(Boolean).join(", ")
+  const badgeSeed = user.login?.uuid ?? user.login?.username ?? name
+  const preview = `${getPreviewOccupation(badgeSeed)}${
+    user.dob?.age ? ` • ${user.dob.age} yrs` : ""
+  }`
+
+  return (
+    <div className="border-b border-border/60 last:border-b-0">
+      <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <button
+          type="button"
+          onClick={onOpenProfile}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none transition hover:opacity-90 focus-visible:ring-3 focus-visible:ring-ring/40"
+        >
+          <div className="relative size-14 shrink-0 overflow-hidden rounded-full border border-border/60 bg-muted">
+            {user.picture.large ? (
+              <Image
+                src={user.picture.large}
+                alt={name}
+                fill
+                className="object-cover"
+                sizes="56px"
+              />
+            ) : (
+              <span className="flex h-full w-full items-center justify-center text-muted-foreground">
+                <UserRound className="size-5" />
+              </span>
+            )}
+          </div>
+
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex items-center gap-2">
+              <p className="truncate text-sm font-semibold text-foreground sm:text-base">
+                {name}
+              </p>
+              <Badge variant={badgeVariant} className="rounded-full px-2 py-0 text-[11px]">
+                {badgeLabel}
+              </Badge>
+            </div>
+            <p className="truncate text-sm text-foreground/80">{title}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {[username, preview, location].filter(Boolean).join(" • ")}
+            </p>
+          </div>
+        </button>
+
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">{actions}</div>
+      </div>
+    </div>
   )
 }
 
