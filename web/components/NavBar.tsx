@@ -2,6 +2,8 @@
 
 import * as React from "react"
 import {
+  Bell,
+  Check,
   HeartHandshake,
   LogIn,
   LogOut,
@@ -10,13 +12,23 @@ import {
   Settings,
   Sun,
   UserRound,
+  X,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 
 import Avatar from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Switch } from "@/components/ui/switch"
 import { APP_NAME } from "@/constants"
+import {
+  createIncomingRequestNotification,
+  getSavedRequestNotifications,
+  markRequestNotificationsRead,
+  REQUEST_NOTIFICATIONS_EVENT,
+  respondToIncomingRequest,
+  type RequestNotification,
+} from "@/lib/request-notifications"
 
 type Props = {
   prefs: { name?: string; location?: string } | null
@@ -65,18 +77,211 @@ export default function NavBar({
               </Button>
             </>
           ) : (
-            <MenuAvatar
-              name={prefs.name}
-              location={prefs.location}
-              avatarSrc={userImage ?? undefined}
-              onEditProfile={onEditProfile}
-              onSignOut={onSignOut}
-            />
+            <>
+              <NotificationBell />
+              <MenuAvatar
+                name={prefs.name}
+                location={prefs.location}
+                avatarSrc={userImage ?? undefined}
+                onEditProfile={onEditProfile}
+                onSignOut={onSignOut}
+              />
+            </>
           )}
         </div>
       </div>
     </nav>
   )
+}
+
+function NotificationBell() {
+  const [open, setOpen] = React.useState(false)
+  const [notifications, setNotifications] = React.useState<
+    RequestNotification[]
+  >([])
+  const wrapperRef = React.useRef<HTMLDivElement | null>(null)
+  const unreadCount = notifications.filter((notification) => !notification.read)
+    .length
+
+  React.useEffect(() => {
+    function syncNotifications() {
+      setNotifications(getSavedRequestNotifications())
+    }
+
+    syncNotifications()
+    window.addEventListener(REQUEST_NOTIFICATIONS_EVENT, syncNotifications)
+    return () =>
+      window.removeEventListener(
+        REQUEST_NOTIFICATIONS_EVENT,
+        syncNotifications
+      )
+  }, [])
+
+  React.useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!wrapperRef.current) return
+      if (!wrapperRef.current.contains(e.target as Node)) setOpen(false)
+    }
+
+    document.addEventListener("click", onDoc)
+    return () => document.removeEventListener("click", onDoc)
+  }, [])
+
+  React.useEffect(() => {
+    let timeoutId: number | undefined
+
+    function scheduleNextIncomingRequest() {
+      const delay = getRandomIncomingRequestDelay()
+
+      timeoutId = window.setTimeout(() => {
+        createIncomingRequestNotification()
+        scheduleNextIncomingRequest()
+      }, delay)
+    }
+
+    scheduleNextIncomingRequest()
+
+    return () => {
+      if (timeoutId) window.clearTimeout(timeoutId)
+    }
+  }, [])
+
+  function toggleOpen() {
+    const nextOpen = !open
+
+    setOpen(nextOpen)
+    if (nextOpen && unreadCount > 0) {
+      window.setTimeout(markRequestNotificationsRead, 0)
+    }
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <button
+        type="button"
+        aria-label="Notifications"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={toggleOpen}
+        className="relative flex size-9 items-center justify-center rounded-full text-muted-foreground outline-none transition hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40"
+      >
+        <Bell className="size-4" />
+        {unreadCount > 0 ? (
+          <span className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-4 text-primary-foreground">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        ) : null}
+      </button>
+
+      {open ? (
+        <div className="absolute right-0 z-50 mt-3 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-xl">
+          <div className="border-b p-3">
+            <p className="text-sm font-semibold">Notifications</p>
+          </div>
+          {notifications.length ? (
+            <ScrollArea className="h-[min(22rem,calc(100svh-8rem))]">
+              <div className="p-1">
+                {notifications.map((notification) => (
+                  <NotificationRow
+                    key={notification.id}
+                    notification={notification}
+                  />
+                ))}
+              </div>
+            </ScrollArea>
+          ) : (
+            <p className="p-4 text-sm text-muted-foreground">
+              No request updates yet.
+            </p>
+          )}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function NotificationRow({
+  notification,
+}: {
+  notification: RequestNotification
+}) {
+  const accepted = notification.status === "accepted"
+  const pendingIncoming =
+    notification.direction === "incoming" && notification.status === "pending"
+  const detail =
+    notification.direction === "incoming"
+      ? notification.status === "pending"
+        ? "Sent you a request"
+        : accepted
+          ? "You accepted this request"
+          : "You rejected this request"
+      : accepted
+        ? "Accepted your request"
+        : "Rejected your request"
+
+  return (
+    <div className="flex items-center gap-3 rounded-md p-2.5 hover:bg-muted">
+      {notification.profileImage ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={notification.profileImage}
+          alt=""
+          className="size-10 shrink-0 rounded-full object-cover"
+        />
+      ) : (
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted">
+          <UserRound className="size-4 text-muted-foreground" />
+        </span>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">
+          {notification.profileName}
+        </p>
+        <p className="text-xs text-muted-foreground">{detail}</p>
+      </div>
+      {pendingIncoming ? (
+        <div className="flex shrink-0 gap-1">
+          <Button
+            type="button"
+            size="icon-sm"
+            aria-label={`Accept ${notification.profileName}'s request`}
+            onClick={() => respondToIncomingRequest(notification.id, "accepted")}
+            className="size-8"
+          >
+            <Check className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            aria-label={`Reject ${notification.profileName}'s request`}
+            onClick={() => respondToIncomingRequest(notification.id, "rejected")}
+            className="size-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
+      ) : (
+        <span
+          className={[
+            "shrink-0 rounded-full px-2 py-1 text-xs font-medium",
+            accepted
+              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+              : "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300",
+          ].join(" ")}
+        >
+          {accepted ? "Accepted" : "Rejected"}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function getRandomIncomingRequestDelay() {
+  const minDelay = 10000
+  const maxDelay = 60000
+
+  return Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay
 }
 
 function MenuAvatar({

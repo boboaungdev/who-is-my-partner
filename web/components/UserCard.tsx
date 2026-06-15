@@ -9,6 +9,7 @@ import {
   Languages,
   MapPin,
   Mars,
+  MessageCircle,
   Send,
   UserRound,
   Venus,
@@ -27,6 +28,11 @@ import {
   REQUESTED_PROFILES_EVENT,
   saveRequestedProfiles,
 } from "@/lib/profile-requests"
+import {
+  getLatestRequestStatus,
+  REQUEST_NOTIFICATIONS_EVENT,
+  scheduleFakeRequestOutcome,
+} from "@/lib/request-notifications"
 
 export type User = {
   gender?: string
@@ -82,6 +88,9 @@ export default function UserCard({
   const lookingFor = getProfileLookingFor(badgeSeed ?? name)
   const profileKey = getProfileKey(user)
   const [requestedProfiles, setRequestedProfiles] = React.useState<string[]>([])
+  const [requestStatus, setRequestStatus] = React.useState<
+    "accepted" | "rejected" | undefined
+  >()
   const requested = requestedProfiles.includes(profileKey)
 
   React.useEffect(() => {
@@ -95,14 +104,30 @@ export default function UserCard({
       window.removeEventListener(REQUESTED_PROFILES_EVENT, syncRequestedProfiles)
   }, [])
 
+  React.useEffect(() => {
+    function syncRequestStatus() {
+      setRequestStatus(getLatestRequestStatus(profileKey))
+    }
+
+    syncRequestStatus()
+    window.addEventListener(REQUEST_NOTIFICATIONS_EVENT, syncRequestStatus)
+    return () =>
+      window.removeEventListener(REQUEST_NOTIFICATIONS_EVENT, syncRequestStatus)
+  }, [profileKey])
+
   function toggleRequest() {
+    if (requestStatus) return
+
     const next = requested
       ? requestedProfiles.filter((key) => key !== profileKey)
       : [...requestedProfiles, profileKey]
 
     saveRequestedProfiles(next)
     setRequestedProfiles(next)
+    if (!requested) scheduleFakeRequestOutcome(user)
   }
+
+  const requestButton = getRequestButtonState(requestStatus, requested)
 
   return (
     <article
@@ -221,23 +246,57 @@ export default function UserCard({
             ) : null}
             <Button
               className="gap-2"
-              variant={requested ? "secondary" : "default"}
+              variant={requestButton.variant}
               onClick={toggleRequest}
+              disabled={requestButton.disabled}
             >
-              {requested ? (
-                <X className="size-4" />
-              ) : (
-                <Send className="size-4" />
-              )}
-              <span className="truncate">
-                {requested ? "Cancel request" : "Send request"}
-              </span>
+              {requestButton.icon}
+              <span className="truncate">{requestButton.label}</span>
             </Button>
           </div>
         ) : null}
       </div>
     </article>
   )
+}
+
+function getRequestButtonState(
+  status: "accepted" | "rejected" | undefined,
+  requested: boolean
+) {
+  if (status === "accepted") {
+    return {
+      disabled: false,
+      icon: <MessageCircle className="size-4" />,
+      label: "Message",
+      variant: "default" as const,
+    }
+  }
+
+  if (status === "rejected") {
+    return {
+      disabled: true,
+      icon: <X className="size-4" />,
+      label: "Rejected",
+      variant: "secondary" as const,
+    }
+  }
+
+  if (requested) {
+    return {
+      disabled: false,
+      icon: <X className="size-4" />,
+      label: "Cancel request",
+      variant: "secondary" as const,
+    }
+  }
+
+  return {
+    disabled: false,
+    icon: <Send className="size-4" />,
+    label: "Send request",
+    variant: "default" as const,
+  }
 }
 
 function ProfileDetail({

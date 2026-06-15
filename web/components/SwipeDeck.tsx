@@ -3,6 +3,7 @@
 import React, { useState } from "react"
 import {
   Heart,
+  MessageCircle,
   RotateCcw,
   Send,
   SkipForward,
@@ -38,6 +39,11 @@ import {
   REQUESTED_PROFILES_EVENT,
   saveRequestedProfiles,
 } from "@/lib/profile-requests"
+import {
+  getLatestRequestStatus,
+  REQUEST_NOTIFICATIONS_EVENT,
+  scheduleFakeRequestOutcome,
+} from "@/lib/request-notifications"
 import { cn } from "@/lib/utils"
 
 type DeckUser = {
@@ -86,11 +92,12 @@ export default function SwipeDeck({
   const [clearLikesOpen, setClearLikesOpen] = useState(false)
   const [clearRequestsOpen, setClearRequestsOpen] = useState(false)
   const [restored, setRestored] = useState(false)
+  const [seenProfileKeys, setSeenProfileKeys] = useState<string[]>([])
 
   const safeUsers = users.filter(isCardUser)
   const hiddenProfileKeys = React.useMemo(
-    () => new Set(likedUsers.map(getProfileKey)),
-    [likedUsers]
+    () => new Set([...likedUsers.map(getProfileKey), ...seenProfileKeys]),
+    [likedUsers, seenProfileKeys]
   )
   const deckUsers = safeUsers.filter(
     (user) => !hiddenProfileKeys.has(getProfileKey(user))
@@ -135,25 +142,22 @@ export default function SwipeDeck({
       setLikedUsers((users) => addUniqueProfile(users, current))
     }
 
-    if (action === "like") {
-      if (idx >= deckUsers.length - 1) {
-        setIdx(0)
-        onLoadMore?.()
-      }
-      return
+    if (current) {
+      const currentKey = getProfileKey(current)
+      setSeenProfileKeys((keys) =>
+        keys.includes(currentKey) ? keys : [...keys, currentKey]
+      )
     }
 
-    const nextIndex = idx + 1
-    if (nextIndex >= deckUsers.length) {
-      setIdx(0)
+    setIdx(0)
+    if (deckUsers.length <= 3) {
       onLoadMore?.()
-    } else {
-      setIdx(nextIndex)
     }
   }
 
   function clearLikedProfiles() {
     setLikedUsers([])
+    setSeenProfileKeys([])
     setIdx(0)
     try {
       localStorage.setItem("wimp:liked-users:v1", "[]")
@@ -193,7 +197,7 @@ export default function SwipeDeck({
           </div>
           <h2 className="mt-4 text-xl font-semibold">No fresh profiles</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Profiles you liked are hidden from the deck.
+            Profiles you already viewed are hidden from the deck.
           </p>
           <div className="mt-5 flex flex-col justify-center gap-2 sm:flex-row">
             <Button onClick={onLoadMore}>Load more</Button>
@@ -660,6 +664,9 @@ function ProfileRow({
   const [requestedProfiles, setRequestedProfiles] = useState<string[]>(() =>
     getSavedRequestedProfiles()
   )
+  const [requestStatus, setRequestStatus] = useState<
+    "accepted" | "rejected" | undefined
+  >()
   const requested = requestedProfiles.includes(profileKey)
   const name = `${user.name.first} ${user.name.last}`
   const location = [user.location.city, user.location.country]
@@ -676,14 +683,30 @@ function ProfileRow({
       window.removeEventListener(REQUESTED_PROFILES_EVENT, syncRequestedProfiles)
   }, [])
 
+  React.useEffect(() => {
+    function syncRequestStatus() {
+      setRequestStatus(getLatestRequestStatus(profileKey))
+    }
+
+    syncRequestStatus()
+    window.addEventListener(REQUEST_NOTIFICATIONS_EVENT, syncRequestStatus)
+    return () =>
+      window.removeEventListener(REQUEST_NOTIFICATIONS_EVENT, syncRequestStatus)
+  }, [profileKey])
+
   function toggleRequest() {
+    if (requestStatus) return
+
     const next = requested
       ? requestedProfiles.filter((key) => key !== profileKey)
       : [...requestedProfiles, profileKey]
 
     saveRequestedProfiles(next)
     setRequestedProfiles(next)
+    if (!requested) scheduleFakeRequestOutcome(user)
   }
+
+  const requestButton = getRequestButtonState(requestStatus, requested)
 
   return (
     <div
@@ -728,19 +751,14 @@ function ProfileRow({
       >
         <Button
           type="button"
-          variant={requested ? "secondary" : "outline"}
+          variant={requestButton.variant}
           size="sm"
           onClick={toggleRequest}
+          disabled={requestButton.disabled}
           className="min-w-0 flex-1 gap-1.5 sm:flex-none"
         >
-          {requested ? (
-            <X className="size-3.5" />
-          ) : (
-            <Send className="size-3.5" />
-          )}
-          <span className="truncate">
-            {requested ? "Cancel request" : "Send request"}
-          </span>
+          {requestButton.icon}
+          <span className="truncate">{requestButton.label}</span>
         </Button>
         {canRemove ? (
           <Button
@@ -757,4 +775,43 @@ function ProfileRow({
       </div>
     </div>
   )
+}
+
+function getRequestButtonState(
+  status: "accepted" | "rejected" | undefined,
+  requested: boolean
+) {
+  if (status === "accepted") {
+    return {
+      disabled: false,
+      icon: <MessageCircle className="size-3.5" />,
+      label: "Message",
+      variant: "default" as const,
+    }
+  }
+
+  if (status === "rejected") {
+    return {
+      disabled: true,
+      icon: <X className="size-3.5" />,
+      label: "Rejected",
+      variant: "secondary" as const,
+    }
+  }
+
+  if (requested) {
+    return {
+      disabled: false,
+      icon: <X className="size-3.5" />,
+      label: "Cancel request",
+      variant: "secondary" as const,
+    }
+  }
+
+  return {
+    disabled: false,
+    icon: <Send className="size-3.5" />,
+    label: "Send request",
+    variant: "outline" as const,
+  }
 }

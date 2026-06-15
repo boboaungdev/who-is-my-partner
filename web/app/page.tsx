@@ -130,6 +130,8 @@ const DEMO_AGES = [
   18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 35, 38, 40, 41,
   46, 52,
 ]
+const INITIAL_PROFILE_COUNT = 50
+const MORE_PROFILE_COUNT = 30
 
 function getDemoBirthdayForAge(age: number) {
   const today = new Date()
@@ -153,6 +155,14 @@ function withDemoAge(user: RandomUser, index: number): RandomUser {
       date: getDemoBirthdayForAge(age),
     },
   }
+}
+
+function getRandomUserKey(user: RandomUser) {
+  return (
+    user.login?.uuid ??
+    user.login?.username ??
+    `${user.name?.first ?? ""}-${user.name?.last ?? ""}-${user.email ?? ""}`
+  )
 }
 
 function normalizeCountryName(value?: string) {
@@ -311,7 +321,7 @@ export default function Page() {
     }
   }
 
-  async function fetchUsers(count = 12) {
+  async function fetchUsers(count = INITIAL_PROFILE_COUNT) {
     setLoading(true)
     try {
       const res = await fetch(
@@ -321,12 +331,22 @@ export default function Page() {
       const fetchedUsers: RandomUser[] = Array.isArray(data.results)
         ? data.results
         : []
-      setUsers((prev) => [
-        ...prev,
-        ...fetchedUsers.map((user, index) =>
-          withDemoAge(user, prev.length + index)
-        ),
-      ])
+      setUsers((prev) => {
+        const existingKeys = new Set(prev.map(getRandomUserKey))
+        const uniqueFetchedUsers = fetchedUsers.filter((user) => {
+          const key = getRandomUserKey(user)
+          if (existingKeys.has(key)) return false
+          existingKeys.add(key)
+          return true
+        })
+
+        return [
+          ...prev,
+          ...uniqueFetchedUsers.map((user, index) =>
+            withDemoAge(user, prev.length + index)
+          ),
+        ]
+      })
     } catch {
       // ignore demo API failures
     } finally {
@@ -336,7 +356,7 @@ export default function Page() {
 
   useEffect(() => {
     setTimeout(() => {
-      void fetchUsers(12)
+      void fetchUsers(INITIAL_PROFILE_COUNT)
       try {
         const raw = localStorage.getItem("wimp:onboard:v2")
         const selectedRaw = localStorage.getItem("wimp:selected-user:v1")
@@ -533,7 +553,7 @@ export default function Page() {
           setView("home")
           clearViewQuery()
           setUsers([])
-          void fetchUsers(12)
+          void fetchUsers(INITIAL_PROFILE_COUNT)
         }}
       />
 
@@ -552,7 +572,7 @@ export default function Page() {
                 goDeck()
               }
               setUsers([])
-              void fetchUsers(12)
+              void fetchUsers(INITIAL_PROFILE_COUNT)
             }}
           />
         ) : view === "home" || !prefs ? (
@@ -560,7 +580,7 @@ export default function Page() {
             countryMeta={countryMeta}
             users={users}
             onStart={goSetup}
-            onLoadMore={() => fetchUsers(8)}
+            onLoadMore={() => fetchUsers(MORE_PROFILE_COUNT)}
           />
         ) : view === "profile" && selectedUser ? (
           <SavedUserProfile
@@ -598,7 +618,7 @@ export default function Page() {
                   getCountryLanguages(user.location?.country, countryMeta)
                 }
                 users={displayUsers}
-                onLoadMore={() => fetchUsers(8)}
+                onLoadMore={() => fetchUsers(MORE_PROFILE_COUNT)}
                 onViewProfile={(user) => {
                   setSelectedUser(user)
                   saveSelectedUser(user)
