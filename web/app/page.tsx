@@ -12,6 +12,8 @@ import {
   BriefcaseBusiness,
   Check,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Filter,
   Globe2,
   HeartHandshake,
@@ -38,6 +40,7 @@ import UserCard, { type User } from "@/components/UserCard"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -95,6 +98,14 @@ type RandomUser = {
   phone?: string
   cell?: string
   nat?: string
+}
+
+type GalleryPhoto = {
+  albumId: number
+  id: number
+  title: string
+  url: string
+  thumbnailUrl: string
 }
 
 type Prefs = {
@@ -2056,6 +2067,290 @@ function getPreviewOccupation(seed?: string) {
   return occupations[total % occupations.length]
 }
 
+function getGalleryAlbumId(seed: string) {
+  const total = seed
+    .split("")
+    .reduce((sum, char) => sum + char.charCodeAt(0), 0)
+
+  return (total % 100) + 1
+}
+
+function getGalleryImageUrl(photoId: number, size: "full" | "thumb") {
+  const dimensions = size === "full" ? "1200/900" : "900/900"
+  return `https://picsum.photos/seed/jsonplaceholder-${photoId}/${dimensions}`
+}
+
+function useProfileGallery(seed: string) {
+  const [photos, setPhotos] = React.useState<GalleryPhoto[]>([])
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState(false)
+
+  React.useEffect(() => {
+    const controller = new AbortController()
+
+    async function loadGallery() {
+      try {
+        setLoading(true)
+        setError(false)
+
+        const albumId = getGalleryAlbumId(seed)
+        const response = await fetch(
+          `https://jsonplaceholder.typicode.com/albums/${albumId}/photos`,
+          { signal: controller.signal }
+        )
+
+        if (!response.ok) {
+          throw new Error("Failed to load gallery")
+        }
+
+        const data = (await response.json()) as GalleryPhoto[]
+        setPhotos(data.slice(0, 8))
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return
+        setError(true)
+        setPhotos([])
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadGallery()
+
+    return () => controller.abort()
+  }, [seed])
+
+  return { photos, loading, error }
+}
+
+function ProfileGallery({
+  seed,
+  title = "Photo gallery",
+}: {
+  seed: string
+  title?: string
+}) {
+  const { photos, loading, error } = useProfileGallery(seed)
+  const [activeIndex, setActiveIndex] = React.useState<number | null>(null)
+  const [loadedFullPhotoIds, setLoadedFullPhotoIds] = React.useState<number[]>([])
+  const activePhoto = activeIndex === null ? null : photos[activeIndex]
+  const activePhotoNumber = activeIndex === null ? null : activeIndex + 1
+  const activePhotoLoaded = activePhoto
+    ? loadedFullPhotoIds.includes(activePhoto.id)
+    : false
+
+  React.useEffect(() => {
+    if (activeIndex === null) return
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "ArrowLeft") {
+        event.preventDefault()
+        setActiveIndex((current) =>
+          current === null ? current : (current - 1 + photos.length) % photos.length
+        )
+      }
+
+      if (event.key === "ArrowRight") {
+        event.preventDefault()
+        setActiveIndex((current) =>
+          current === null ? current : (current + 1) % photos.length
+        )
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [activeIndex, photos.length])
+
+  React.useEffect(() => {
+    if (!activePhoto) return
+
+    const indexesToPreload = [
+      activeIndex,
+      activeIndex === null ? null : (activeIndex + 1) % photos.length,
+      activeIndex === null ? null : (activeIndex - 1 + photos.length) % photos.length,
+    ].filter((value): value is number => value !== null)
+
+    indexesToPreload.forEach((index) => {
+      const photo = photos[index]
+      if (!photo) return
+      if (loadedFullPhotoIds.includes(photo.id)) return
+
+      const image = new window.Image()
+      image.src = getGalleryImageUrl(photo.id, "full")
+      image.onload = () => {
+        setLoadedFullPhotoIds((current) =>
+          current.includes(photo.id) ? current : [...current, photo.id]
+        )
+      }
+    })
+  }, [activeIndex, activePhoto, loadedFullPhotoIds, photos])
+
+  function showPreviousPhoto() {
+    setActiveIndex((current) =>
+      current === null ? current : (current - 1 + photos.length) % photos.length
+    )
+  }
+
+  function showNextPhoto() {
+    setActiveIndex((current) =>
+      current === null ? current : (current + 1) % photos.length
+    )
+  }
+
+  return (
+    <>
+      <Card className="mt-5 rounded-[1.75rem] border-border/60 bg-card/95 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur dark:shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">{title}</h2>
+            <p className="text-sm text-muted-foreground">
+              A few extra moments from this profile.
+            </p>
+          </div>
+          <Badge variant="outline" className="rounded-full px-3 py-1">
+            8 photos
+          </Badge>
+        </div>
+
+        {loading ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <Skeleton
+                key={index}
+                className={cn(
+                  "rounded-[1.25rem]",
+                  index === 0 ? "col-span-2 aspect-[1.7/1] sm:col-span-2" : "aspect-square"
+                )}
+              />
+            ))}
+          </div>
+        ) : error ? (
+          <div className="rounded-[1.25rem] border border-dashed border-border/70 bg-muted/25 px-4 py-8 text-center">
+            <p className="text-sm font-medium">Gallery unavailable right now</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Try reopening the profile in a moment.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {photos.map((photo, index) => (
+              <button
+                key={photo.id}
+                type="button"
+                onClick={() => setActiveIndex(index)}
+                className={cn(
+                  "group relative overflow-hidden rounded-[1.25rem] bg-muted text-left outline-none transition focus-visible:ring-3 focus-visible:ring-ring/40",
+                  index === 0 ? "col-span-2 aspect-[1.7/1] sm:col-span-2" : "aspect-square"
+                )}
+              >
+                <Image
+                  src={getGalleryImageUrl(photo.id, "thumb")}
+                  alt={photo.title}
+                  fill
+                  sizes={index === 0 ? "(max-width: 640px) 100vw, 66vw" : "(max-width: 640px) 50vw, 33vw"}
+                  className="object-cover transition duration-300 group-hover:scale-[1.03]"
+                />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/25 to-transparent p-3">
+                  <p className="line-clamp-2 text-xs font-medium text-white/95">
+                    {photo.title}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Dialog open={activeIndex !== null} onOpenChange={(open) => !open && setActiveIndex(null)}>
+        {activePhoto ? (
+          <DialogContent className="max-h-[calc(100svh-1rem)] max-w-[min(72rem,calc(100vw-1rem))] gap-3 border-border/60 bg-background/96 p-3 sm:p-4">
+            <DialogTitle className="sr-only">{activePhoto.title}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Photo {activeIndex! + 1} of {photos.length}
+            </DialogDescription>
+
+            <div className="relative overflow-hidden rounded-[1.25rem] bg-muted">
+              <Image
+                src={getGalleryImageUrl(activePhoto.id, "thumb")}
+                alt={activePhoto.title}
+                width={900}
+                height={900}
+                sizes="100vw"
+                className="max-h-[70svh] w-full object-contain"
+              />
+              {activePhotoLoaded ? (
+                <Image
+                  src={getGalleryImageUrl(activePhoto.id, "full")}
+                  alt={activePhoto.title}
+                  fill
+                  sizes="100vw"
+                  className="absolute inset-0 object-contain"
+                />
+              ) : (
+                <div className="absolute inset-x-0 bottom-3 flex justify-center">
+                  <span className="rounded-full bg-background/88 px-3 py-1 text-xs text-muted-foreground shadow-sm">
+                    Loading photo...
+                  </span>
+                </div>
+              )}
+
+              {photos.length > 1 ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon-sm"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-background/88"
+                    onClick={showPreviousPhoto}
+                  >
+                    <ChevronLeft className="size-4" />
+                    <span className="sr-only">Previous photo</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon-sm"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-background/88"
+                    onClick={showNextPhoto}
+                  >
+                    <ChevronRight className="size-4" />
+                    <span className="sr-only">Next photo</span>
+                  </Button>
+                </>
+              ) : null}
+            </div>
+
+            <div className="flex items-center justify-between gap-3 px-1">
+              <div className="min-w-0">
+                <p className="line-clamp-2 text-sm font-medium">{activePhoto.title}</p>
+                <p className="text-xs text-muted-foreground">
+                  Photo {activePhotoNumber} of {photos.length}
+                </p>
+              </div>
+              <div className="hidden items-center gap-1 sm:flex">
+                {photos.map((photo, index) => (
+                  <button
+                    key={photo.id}
+                    type="button"
+                    onClick={() => setActiveIndex(index)}
+                    className={cn(
+                      "h-1.5 w-6 rounded-full transition",
+                      index === activeIndex ? "bg-primary" : "bg-muted-foreground/25"
+                    )}
+                    aria-label={`Open photo ${index + 1}`}
+                  />
+                ))}
+              </div>
+            </div>
+          </DialogContent>
+        ) : null}
+      </Dialog>
+    </>
+  )
+}
+
 function SavedUserProfile({
   countryMeta,
   user,
@@ -2082,6 +2377,8 @@ function SavedUserProfile({
     )
   }
 
+  const gallerySeed = user.login?.uuid ?? `${user.name.first}-${user.name.last}`
+
   return (
     <section className="mx-auto w-full max-w-[520px]">
       <div className="mb-4">
@@ -2101,6 +2398,7 @@ function SavedUserProfile({
         showRequestMenu
         user={user}
       />
+      <ProfileGallery seed={gallerySeed} />
     </section>
   )
 }
@@ -2121,6 +2419,7 @@ function MyProfileView({
   const user = getPrefsProfileUser(prefs, avatar)
   const country = prefs.currentCountry || prefs.country
   const homeCountry = prefs.homeCountry || prefs.country || country
+  const gallerySeed = user.login?.uuid ?? `${user.name.first}-${user.name.last}`
 
   return (
     <section className="mx-auto w-full max-w-[520px]">
@@ -2137,6 +2436,7 @@ function MyProfileView({
         user={user}
         variant="self"
       />
+      <ProfileGallery seed={gallerySeed} title="Your gallery" />
     </section>
   )
 }

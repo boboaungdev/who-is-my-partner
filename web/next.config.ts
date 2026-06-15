@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
         hostname: "randomuser.me",
         pathname: "/api/portraits/**",
       },
+      {
+        protocol: "https",
+        hostname: "picsum.photos",
+        pathname: "/seed/**",
+      },
     ],
   },
 }
