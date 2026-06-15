@@ -4,7 +4,10 @@ import * as React from "react"
 import { useEffect, useMemo, useState } from "react"
 import {
   ArrowRight,
+  Bell,
+  Bookmark,
   BriefcaseBusiness,
+  Check,
   CheckCircle2,
   Filter,
   Globe2,
@@ -15,12 +18,15 @@ import {
   MapPin,
   Mars,
   Sparkles,
+  Settings2,
   UserRound,
   Venus,
   VenusAndMars,
+  X,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 
+import AppSidebar from "@/components/AppSidebar"
 import NavBar from "@/components/NavBar"
 import Onboarding from "@/components/Onboarding"
 import ProfileStatusIcons from "@/components/ProfileStatusIcons"
@@ -37,6 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Sheet,
@@ -54,6 +61,14 @@ import {
 } from "@/constants"
 import { getProfileBadges } from "@/lib/profile-badges"
 import { getProfileLookingFor } from "@/lib/profile-looking-for"
+import {
+  getSavedRequestNotifications,
+  markRequestNotificationsRead,
+  REQUEST_NOTIFICATIONS_EVENT,
+  respondToIncomingRequest,
+  type RequestNotification,
+} from "@/lib/request-notifications"
+import { getProfileKey, getSavedRequestedProfiles } from "@/lib/profile-requests"
 import { cn } from "@/lib/utils"
 
 type RandomUser = {
@@ -195,10 +210,58 @@ function normalizeCountryName(value?: string) {
 
 function getCountryLanguages(
   country: string | undefined,
-  countryMeta: Record<string, CountryMeta>
+  countryMeta: Record<string, CountryMeta>,
+  seed?: string
 ) {
-  const languages = countryMeta[normalizeCountryName(country)]?.languages ?? []
-  return languages.slice(0, 5)
+  const countryLanguages =
+    countryMeta[normalizeCountryName(country)]?.languages ?? []
+
+  if (!seed) return countryLanguages.slice(0, 5)
+
+  const allLanguages = Array.from(
+    new Set(
+      Object.values(countryMeta).flatMap((meta) =>
+        Array.isArray(meta.languages) ? meta.languages : []
+      )
+    )
+  )
+  const fallbackLanguages = [
+    "English",
+    "Spanish",
+    "French",
+    "German",
+    "Thai",
+    "Japanese",
+    "Korean",
+    "Italian",
+    "Portuguese",
+    "Mandarin",
+  ]
+  const languagePool = allLanguages.length ? allLanguages : fallbackLanguages
+  const preferred = countryLanguages.length ? countryLanguages : languagePool
+  const extras = languagePool.filter((language) => !preferred.includes(language))
+  const targetCount = Math.min(
+    5,
+    Math.max(1, getSeedValue(seed) % 5 + 1)
+  )
+  const orderedPreferred = getSeededOrder(preferred, `${seed}:preferred`)
+  const orderedExtras = getSeededOrder(extras, `${seed}:extras`)
+
+  return [...orderedPreferred, ...orderedExtras].slice(0, targetCount)
+}
+
+function getSeedValue(seed: string) {
+  return seed
+    .split("")
+    .reduce((total, char, index) => total + char.charCodeAt(0) * (index + 1), 0)
+}
+
+function getSeededOrder(items: string[], seed: string) {
+  return [...items].sort((a, b) => {
+    const aValue = getSeedValue(`${seed}:${a}`)
+    const bValue = getSeedValue(`${seed}:${b}`)
+    return aValue - bValue || a.localeCompare(b)
+  })
 }
 
 function getCountryFlagUrl(
@@ -293,6 +356,12 @@ export default function Page() {
   const [loading, setLoading] = useState(false)
   const [prefs, setPrefs] = useState<Prefs | null>(null)
   const [view, setView] = useState<AppView>("home")
+  const [savedSection, setSavedSection] = useState<
+    "saved" | "requested" | "incoming"
+  >(
+    "saved"
+  )
+  const [sidebarHidden, setSidebarHidden] = useState(false)
   const [profileSheetOpen, setProfileSheetOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<RandomUser | null>(null)
   const [countryMeta, setCountryMeta] = useState<Record<string, CountryMeta>>(
@@ -306,7 +375,7 @@ export default function Page() {
 
   function goHome() {
     if (prefs) {
-      goDeck()
+      goDiscover()
       return
     }
 
@@ -316,7 +385,7 @@ export default function Page() {
 
   function goSetup() {
     if (prefs) {
-      goDeck()
+      goDiscover()
       return
     }
     setView("setup")
@@ -338,14 +407,55 @@ export default function Page() {
     setViewQuery("my-profile")
   }
 
-  function goDeck() {
-    setView("deck")
-    setViewQuery("deck")
+  function goNotifications() {
+    setView("notifications")
+    setViewQuery("notifications")
+  }
+
+  function goDiscover() {
+    setView("discover")
+    setViewQuery("discover")
+  }
+
+  function goSaved() {
+    setSavedSection("saved")
+    setView("saved")
+    setViewQuery("saved")
+  }
+
+  function goSettings() {
+    setView("settings")
+    setViewQuery("settings")
+  }
+
+  function openSavedLikes() {
+    setSavedSection("saved")
+    goSaved()
+  }
+
+  function openSavedRequests() {
+    setSavedSection("requested")
+    setView("saved")
+    setViewQuery("saved")
+  }
+
+  function openSavedIncoming() {
+    setSavedSection("incoming")
+    setView("saved")
+    setViewQuery("saved")
   }
 
   function goProfile(user?: RandomUser | null) {
     setView("profile")
     setProfileViewQuery(user)
+  }
+
+  function openNotificationProfile(notification: RequestNotification) {
+    const profileUser = getNotificationProfileUser(notification)
+
+    setSelectedUser(profileUser)
+    saveSelectedUser(profileUser)
+    goProfile(profileUser)
   }
 
   function selectLandingUser(user: RandomUser) {
@@ -409,9 +519,9 @@ export default function Page() {
 
         if (savedPrefs) {
           setPrefs(savedPrefs)
-          const nextView = !view || view === "home" ? "deck" : view
+          const nextView = !view || view === "home" ? "discover" : view
           setView(nextView)
-          if (!view || view === "home") setViewQuery("deck", "replace")
+          if (!view || view === "home") setViewQuery("discover", "replace")
         } else {
           setPrefs(null)
           const nextView = view === "setup" ? "setup" : "home"
@@ -529,7 +639,7 @@ export default function Page() {
       const nextView = getViewQuery()
       setView(
         prefs && (!nextView || nextView === "home")
-          ? "deck"
+          ? "discover"
           : (nextView ?? "home")
       )
     }
@@ -537,6 +647,9 @@ export default function Page() {
     window.addEventListener("popstate", syncFromUrl)
     return () => window.removeEventListener("popstate", syncFromUrl)
   }, [prefs])
+
+  const savedCounts = useSavedCounts(Boolean(prefs))
+  const notificationCount = useUnreadNotificationCount(Boolean(prefs))
 
   const filteredUsers = useMemo(() => {
     if (!prefs) return users
@@ -575,13 +688,142 @@ export default function Page() {
     }
   }
 
+  const activeTab =
+    view === "notifications"
+      ? "notifications"
+      : view === "saved"
+        ? "saved"
+        : view === "my-profile" || view === "settings"
+          ? "me"
+      : view === "profile"
+        ? "profile"
+        : "discover"
+  const activeSidebarItem =
+    view === "notifications"
+      ? "notifications"
+      : view === "saved"
+      ? "saved"
+      : view === "my-profile" || view === "settings"
+        ? "me"
+        : "discover"
+  const totalSavedCount =
+    savedCounts.likes + savedCounts.requests + savedCounts.incoming
+
+  const content = view === "setup" ? (
+    <Onboarding
+      initialPrefs={prefs}
+      profileOnly={Boolean(prefs)}
+      onBack={prefs ? goDiscover : goHome}
+      onComplete={(p: Prefs) => {
+        const wasEditingProfile = Boolean(prefs)
+        setPrefs(p)
+        if (!wasEditingProfile && selectedUser) {
+          goProfile(selectedUser)
+        } else {
+          goDiscover()
+        }
+        setUsers([])
+        void fetchUsers(INITIAL_PROFILE_COUNT)
+      }}
+    />
+  ) : view === "home" || !prefs ? (
+    <MarketingHome
+      countryMeta={countryMeta}
+      users={users}
+      onStart={goSetup}
+      onLoadMore={() => fetchUsers(MORE_PROFILE_COUNT)}
+    />
+  ) : view === "profile" && selectedUser ? (
+    <SavedUserProfile
+      countryMeta={countryMeta}
+      user={selectedUser}
+      onBack={goDiscover}
+    />
+  ) : view === "my-profile" && prefs ? (
+    <MyProfileView
+      avatar={signedUserImage}
+      countryMeta={countryMeta}
+      prefs={prefs}
+      onBack={goDiscover}
+      onEditProfile={editProfile}
+    />
+  ) : view === "notifications" && prefs ? (
+    <NotificationsView
+      onBack={goDiscover}
+      onOpenProfile={openNotificationProfile}
+    />
+  ) : view === "saved" && prefs ? (
+    <SavedView
+      counts={savedCounts}
+      currentSection={savedSection}
+      onOpenIncoming={openSavedIncoming}
+      onOpenLikes={openSavedLikes}
+      onOpenRequests={openSavedRequests}
+      onBack={goDiscover}
+      onOpenProfile={(user) => {
+        setSelectedUser(user)
+        saveSelectedUser(user)
+        goProfile(user)
+      }}
+      sourceUsers={displayUsers}
+    />
+  ) : view === "settings" && prefs ? (
+    <SettingsView onEditProfile={editProfile} prefs={prefs} />
+  ) : (
+    <div className="grid gap-6 lg:grid-cols-[160px_minmax(0,1fr)]">
+      <aside className="order-1 lg:order-1">
+        <FilterSheet
+          countryMeta={countryMeta}
+          locationOptions={locationOptions}
+          locationsLoading={locationsLoading}
+          matchingCount={displayUsers.length}
+          onPrefsChange={updatePrefs}
+          prefs={prefs}
+        />
+      </aside>
+
+      <div className="order-1 lg:order-2">
+        <SwipeDeck
+          getCountryFlagUrl={(user) =>
+            getCountryFlagUrl(user.nat, countryMeta) ??
+            getCountryFlagUrl(user.location?.country, countryMeta)
+          }
+                getHomeCountry={(user) =>
+                  getCountryName(user.nat, countryMeta) ?? user.location?.country
+                }
+                getLanguages={(user) =>
+                  getCountryLanguages(
+                    user.location?.country,
+                    countryMeta,
+                    getRandomUserKey(user)
+                  )
+                }
+                users={displayUsers}
+          onLoadMore={() => fetchUsers(MORE_PROFILE_COUNT)}
+          onViewProfile={(user) => {
+            setSelectedUser(user)
+            saveSelectedUser(user)
+            goProfile(user)
+          }}
+        />
+      </div>
+    </div>
+  )
+
   return (
-    <div className="min-h-svh bg-background text-foreground">
+    <div className="flex min-h-svh flex-col bg-background text-foreground">
       <NavBar
+        activeTab={activeTab}
         prefs={prefs}
         userImage={signedUserImage}
+        onDiscover={goDiscover}
         onEditProfile={editProfile}
         onHome={goHome}
+        onNotifications={goNotifications}
+        onOpenNotificationProfile={openNotificationProfile}
+        onMe={viewMyProfile}
+        onProfile={viewMyProfile}
+        onSaved={goSaved}
         onStart={goSetup}
         onViewProfile={viewMyProfile}
         onSignOut={() => {
@@ -600,106 +842,73 @@ export default function Page() {
         }}
       />
 
-      <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:py-8">
-        {view === "setup" ? (
-          <Onboarding
-            initialPrefs={prefs}
-            profileOnly={Boolean(prefs)}
-            onBack={prefs ? goDeck : goHome}
-            onComplete={(p: Prefs) => {
-              const wasEditingProfile = Boolean(prefs)
-              setPrefs(p)
-              if (!wasEditingProfile && selectedUser) {
-                goProfile(selectedUser)
-              } else {
-                goDeck()
-              }
-              setUsers([])
-              void fetchUsers(INITIAL_PROFILE_COUNT)
-            }}
-          />
-        ) : view === "home" || !prefs ? (
-          <MarketingHome
-            countryMeta={countryMeta}
-            users={users}
-            onStart={goSetup}
-            onLoadMore={() => fetchUsers(MORE_PROFILE_COUNT)}
-          />
-        ) : view === "profile" && selectedUser ? (
-          <SavedUserProfile
-            countryMeta={countryMeta}
-            user={selectedUser}
-            onBack={goDeck}
-          />
-        ) : view === "my-profile" && prefs ? (
-          <MyProfileView
-            avatar={signedUserImage}
-            countryMeta={countryMeta}
-            prefs={prefs}
-            onBack={goDeck}
-            onEditProfile={editProfile}
-          />
-        ) : (
-          <div className="grid gap-6 lg:grid-cols-[160px_minmax(0,1fr)]">
-            <aside className="order-1 lg:order-1">
-              <FilterSheet
-                countryMeta={countryMeta}
-                locationOptions={locationOptions}
-                locationsLoading={locationsLoading}
-                matchingCount={displayUsers.length}
-                onPrefsChange={updatePrefs}
-                prefs={prefs}
+      <main
+        className={cn(
+          "mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:py-8",
+          prefs && "pb-32 md:pb-8"
+        )}
+      >
+        {prefs && view !== "setup" ? (
+          <div className="flex items-start gap-6 lg:gap-8">
+            {!sidebarHidden ? (
+              <AppSidebar
+                activeItem={activeSidebarItem}
+                collapsed={sidebarHidden}
+                onClose={() => setSidebarHidden((value) => !value)}
+                onDiscover={goDiscover}
+                onMe={viewMyProfile}
+                onNotifications={goNotifications}
+                onSaved={goSaved}
+                notificationCount={notificationCount}
+                savedCount={totalSavedCount}
               />
-            </aside>
-
-            <div className="order-1 lg:order-2">
-              <SwipeDeck
-                getCountryFlagUrl={(user) =>
-                  getCountryFlagUrl(user.nat, countryMeta) ??
-                  getCountryFlagUrl(user.location?.country, countryMeta)
-                }
-                getHomeCountry={(user) =>
-                  getCountryName(user.nat, countryMeta) ??
-                  user.location?.country
-                }
-                getLanguages={(user) =>
-                  getCountryLanguages(user.location?.country, countryMeta)
-                }
-                users={displayUsers}
-                onLoadMore={() => fetchUsers(MORE_PROFILE_COUNT)}
-                onViewProfile={(user) => {
-                  setSelectedUser(user)
-                  saveSelectedUser(user)
-                  goProfile(user)
-                }}
+            ) : (
+              <AppSidebar
+                activeItem={activeSidebarItem}
+                collapsed
+                onClose={() => setSidebarHidden(false)}
+                onDiscover={goDiscover}
+                onMe={viewMyProfile}
+                onNotifications={goNotifications}
+                onSaved={goSaved}
+                notificationCount={notificationCount}
+                savedCount={totalSavedCount}
               />
-            </div>
+            )}
+            <div className="min-w-0 flex-1">{content}</div>
           </div>
+        ) : (
+          content
         )}
       </main>
       <Sheet open={profileSheetOpen} onOpenChange={setProfileSheetOpen}>
         <SheetContent
           side="bottom"
-          className="overflow-y-auto sm:w-[min(48rem,calc(100vw-2rem))]"
+          className="max-h-[92svh] overflow-hidden rounded-t-[2rem] border-t border-border/70 bg-background/95 p-0 backdrop-blur-xl sm:max-h-none sm:w-[min(46rem,calc(100vw-1rem))] sm:rounded-l-[2rem] sm:rounded-t-none sm:border-l sm:border-t-0"
         >
-          <SheetHeader>
+          <SheetHeader className="border-b border-border/60 px-5 py-5 sm:px-7">
             <SheetTitle>Edit profile</SheetTitle>
             <SheetDescription>
-              Make quick changes to your account.
+              Refresh your details, location, and profile vibe.
             </SheetDescription>
           </SheetHeader>
           {prefs ? (
-            <SimpleProfileEditForm
-              countryMeta={countryMeta}
-              locationOptions={locationOptions}
-              locationsLoading={locationsLoading}
-              prefs={prefs}
-              onCancel={() => setProfileSheetOpen(false)}
-              onSave={(nextPrefs) => {
-                updatePrefs(nextPrefs)
-                setProfileSheetOpen(false)
-              }}
-            />
+            <ScrollArea className="min-h-0 flex-1">
+              <div className="px-5 py-5 sm:px-7 sm:py-6">
+                <SimpleProfileEditForm
+                  key={JSON.stringify(prefs)}
+                  countryMeta={countryMeta}
+                  locationOptions={locationOptions}
+                  locationsLoading={locationsLoading}
+                  prefs={prefs}
+                  onCancel={() => setProfileSheetOpen(false)}
+                  onSave={(nextPrefs) => {
+                    updatePrefs(nextPrefs)
+                    setProfileSheetOpen(false)
+                  }}
+                />
+              </div>
+            </ScrollArea>
           ) : null}
         </SheetContent>
       </Sheet>
@@ -737,10 +946,6 @@ function SimpleProfileEditForm({
     draft.gender.trim().length > 0 &&
     draft.occupation?.trim() &&
     !draft.occupation.includes(",")
-
-  React.useEffect(() => {
-    setDraft(prefs)
-  }, [prefs])
 
   function update<K extends keyof Prefs>(key: K, value: Prefs[K]) {
     setDraft((current) => ({ ...current, [key]: value }))
@@ -800,26 +1005,55 @@ function SimpleProfileEditForm({
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-4">
-        <div className="size-16 overflow-hidden rounded-full border bg-muted">
-          {draft.avatar ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={draft.avatar} alt="" className="size-full object-cover" />
-          ) : (
-            <div className="flex size-full items-center justify-center text-muted-foreground">
-              <UserRound className="size-6" />
+      <div className="rounded-[1.75rem] border border-border/60 bg-[linear-gradient(135deg,color-mix(in_oklch,var(--primary),white_88%),background)] p-4 shadow-[0_18px_40px_rgba(15,23,42,0.06)] dark:bg-[linear-gradient(135deg,color-mix(in_oklch,var(--primary),black_72%),background)]">
+        <div className="flex items-start gap-4">
+          <div className="size-16 overflow-hidden rounded-full border-4 border-background bg-muted shadow-sm">
+            {draft.avatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={draft.avatar} alt="" className="size-full object-cover" />
+            ) : (
+              <div className="flex size-full items-center justify-center text-muted-foreground">
+                <UserRound className="size-6" />
+              </div>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="truncate text-base font-semibold">
+                {draft.name || "Your profile"}
+              </p>
+              <Badge variant="secondary" className="rounded-full px-2.5 py-0.5">
+                <Sparkles className="mr-1 size-3.5" />
+                Edit mode
+              </Badge>
             </div>
-          )}
+            <p className="mt-1 text-sm text-muted-foreground">
+              Update the details people notice first.
+            </p>
+            <Input
+              type="file"
+              accept="image/*"
+              className="mt-3"
+              onChange={(event) => updateAvatar(event.target.files?.[0])}
+            />
+          </div>
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">
-            {draft.name || "Your profile"}
-          </p>
-          <Input
-            type="file"
-            accept="image/*"
-            className="mt-2"
-            onChange={(event) => updateAvatar(event.target.files?.[0])}
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          <EditProfileStat
+            icon={<MapPin className="size-4" />}
+            label="Location"
+            value={draft.currentCity || draft.currentCountry || "Add your city"}
+          />
+          <EditProfileStat
+            icon={<BriefcaseBusiness className="size-4" />}
+            label="Work"
+            value={draft.occupation || "Add occupation"}
+          />
+          <EditProfileStat
+            icon={<HeartHandshake className="size-4" />}
+            label="Looking for"
+            value={getMyProfileLookingFor(draft.relationshipGoal)}
           />
         </div>
       </div>
@@ -940,7 +1174,7 @@ function SimpleProfileEditForm({
         </SimpleEditField>
       </div>
 
-      <div className="sticky bottom-0 -mx-4 grid gap-2 border-t bg-background/95 px-4 py-4 backdrop-blur sm:-mx-6 sm:flex sm:justify-end sm:px-6">
+      <div className="sticky bottom-0 -mx-5 grid gap-2 border-t border-border/60 bg-background/95 px-5 py-4 backdrop-blur sm:-mx-7 sm:flex sm:justify-end sm:px-7">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
@@ -948,6 +1182,28 @@ function SimpleProfileEditForm({
           Save changes
         </Button>
       </div>
+    </div>
+  )
+}
+
+function EditProfileStat({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+}) {
+  return (
+    <div className="rounded-2xl border border-border/60 bg-background/72 px-3 py-3">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <p className="mt-2 truncate text-sm font-medium text-foreground">
+        {value}
+      </p>
     </div>
   )
 }
@@ -1086,7 +1342,7 @@ function AppFooter() {
   ]
 
   return (
-    <footer className="border-t bg-background">
+    <footer className="hidden border-t bg-background sm:block">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-5 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div>
           <p className="font-medium text-foreground">{APP_NAME}</p>
@@ -1154,15 +1410,26 @@ function XSocialIcon({ className }: { className?: string }) {
   )
 }
 
-type AppView = "home" | "setup" | "deck" | "profile" | "my-profile"
+type AppView =
+  | "home"
+  | "setup"
+  | "discover"
+  | "profile"
+  | "my-profile"
+  | "notifications"
+  | "saved"
+  | "settings"
 
 function getViewQuery(): AppView | null {
   const view = new URLSearchParams(window.location.search).get("view")
   return view === "home" ||
     view === "setup" ||
-    view === "deck" ||
+    view === "discover" ||
     view === "profile" ||
-    view === "my-profile"
+    view === "my-profile" ||
+    view === "notifications" ||
+    view === "saved" ||
+    view === "settings"
     ? view
     : null
 }
@@ -1202,6 +1469,132 @@ function setProfileViewQuery(user?: RandomUser | null) {
 
 function saveSelectedUser(user: RandomUser) {
   localStorage.setItem("wimp:selected-user:v1", JSON.stringify(user))
+}
+
+function getSavedLikedProfilesCount() {
+  if (typeof window === "undefined") return 0
+
+  try {
+    const raw = localStorage.getItem("wimp:liked-users:v1")
+    const users = raw ? JSON.parse(raw) : []
+    return Array.isArray(users) ? users.length : 0
+  } catch {
+    return 0
+  }
+}
+
+function subscribeSavedData(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange)
+  window.addEventListener("wimp:liked-users:change", onStoreChange)
+  window.addEventListener("wimp:requested-profiles:change", onStoreChange)
+  window.addEventListener(REQUEST_NOTIFICATIONS_EVENT, onStoreChange)
+
+  return () => {
+    window.removeEventListener("storage", onStoreChange)
+    window.removeEventListener("wimp:liked-users:change", onStoreChange)
+    window.removeEventListener("wimp:requested-profiles:change", onStoreChange)
+    window.removeEventListener(REQUEST_NOTIFICATIONS_EVENT, onStoreChange)
+  }
+}
+
+const EMPTY_SAVED_COUNTS: {
+  incoming: number
+  likes: number
+  requests: number
+} = { incoming: 0, likes: 0, requests: 0 }
+let cachedSavedCounts = EMPTY_SAVED_COUNTS
+
+function getSavedCountsSnapshot(enabled: boolean) {
+  if (!enabled || typeof window === "undefined") {
+    return EMPTY_SAVED_COUNTS
+  }
+
+  const notifications = getSavedRequestNotifications()
+  const next = {
+    incoming: notifications.filter((item) => item.direction === "incoming")
+      .length,
+    likes: getSavedLikedProfilesCount(),
+    requests: getSavedRequestedProfiles().length,
+  }
+
+  if (
+    cachedSavedCounts.incoming === next.incoming &&
+    cachedSavedCounts.likes === next.likes &&
+    cachedSavedCounts.requests === next.requests
+  ) {
+    return cachedSavedCounts
+  }
+
+  cachedSavedCounts = next
+  return cachedSavedCounts
+}
+
+function useSavedCounts(enabled: boolean) {
+  return React.useSyncExternalStore(
+    subscribeSavedData,
+    () => getSavedCountsSnapshot(enabled),
+    () => EMPTY_SAVED_COUNTS
+  )
+}
+
+function useUnreadNotificationCount(enabled: boolean) {
+  return React.useSyncExternalStore(
+    (onStoreChange) => {
+      window.addEventListener(REQUEST_NOTIFICATIONS_EVENT, onStoreChange)
+      return () =>
+        window.removeEventListener(REQUEST_NOTIFICATIONS_EVENT, onStoreChange)
+    },
+    () =>
+      enabled
+        ? getSavedRequestNotifications().filter((item) => !item.read).length
+        : 0,
+    () => 0
+  )
+}
+
+function getSavedProfilesFromStorage() {
+  if (typeof window === "undefined") return []
+
+  try {
+    const raw = localStorage.getItem("wimp:liked-users:v1")
+    const users = raw ? JSON.parse(raw) : []
+    return Array.isArray(users) ? users.filter(isProfileUser) : []
+  } catch {
+    return []
+  }
+}
+
+function getNotificationProfileUser(notification: RequestNotification): RandomUser {
+  if (notification.profile) {
+    return notification.profile
+  }
+
+  const [firstName, ...lastNameParts] = notification.profileName.split(" ")
+  const fallbackGender = notification.profileKey.includes("women")
+    ? "female"
+    : notification.profileKey.includes("men")
+      ? "male"
+      : undefined
+
+  return {
+    gender: fallbackGender,
+    name: {
+      first: firstName || "Profile",
+      last: lastNameParts.join(" ") || "User",
+    },
+    location: {
+      city: "Discover",
+      country: "Member",
+    },
+    picture: {
+      large: notification.profileImage || "/icon.svg",
+    },
+    login: {
+      uuid: notification.profileKey,
+      username: formatUsername(notification.profileName),
+    },
+    nat: "Member",
+  }
 }
 
 function MarketingHome({
@@ -1248,7 +1641,7 @@ function MarketingHome({
           </h1>
           <p className="mt-5 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
             Explore partner matches with clean preferences, real profile-style
-            data, and a focused dashboard experience built for quick discovery.
+            data, and a focused Discover experience built for quick connection.
           </p>
 
           <div className="mt-7 flex flex-col gap-3 sm:flex-row">
@@ -1626,10 +2019,10 @@ function SavedUserProfile({
         </div>
         <h1 className="mt-4 text-xl font-semibold">Profile unavailable</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Pick another profile from the discovery dashboard.
+          Pick another profile from Discover.
         </p>
         <Button onClick={onBack} className="mt-5">
-          Back to dashboard
+          Back to Discover
         </Button>
       </Card>
     )
@@ -1639,23 +2032,19 @@ function SavedUserProfile({
 
   return (
     <section className="mx-auto w-full max-w-[520px]">
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4">
         <div>
           <p className="text-sm font-medium text-muted-foreground">
             Saved profile
           </p>
           <h1 className="text-2xl font-semibold">{name}</h1>
         </div>
-        <Button variant="outline" onClick={onBack}>
-          Back to dashboard
-        </Button>
       </div>
       <UserCard
         countryFlagUrl={
           getCountryFlagUrl(user.nat, countryMeta) ??
           getCountryFlagUrl(user.location.country, countryMeta)
         }
-        hideProfileButton
         homeCountry={
           getCountryName(user.nat, countryMeta) ?? user.location.country
         }
@@ -1686,20 +2075,16 @@ function MyProfileView({
 
   return (
     <section className="mx-auto w-full max-w-[520px]">
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4">
         <div>
           <p className="text-sm font-medium text-muted-foreground">
             Your profile
           </p>
           <h1 className="text-2xl font-semibold">{prefs.name}</h1>
         </div>
-        <Button variant="outline" onClick={onBack}>
-          Back to dashboard
-        </Button>
       </div>
       <UserCard
         countryFlagUrl={getCountryFlagUrl(country, countryMeta)}
-        hideProfileButton
         homeCountry={getCountryName(homeCountry, countryMeta) ?? homeCountry}
         languages={prefs.languages ?? getCountryLanguages(country, countryMeta)}
         occupation={prefs.occupation}
@@ -1709,6 +2094,490 @@ function MyProfileView({
         variant="self"
       />
     </section>
+  )
+}
+
+function NotificationsView({
+  onBack,
+  onOpenProfile,
+}: {
+  onBack: () => void
+  onOpenProfile: (notification: RequestNotification) => void
+}) {
+  const [notifications, setNotifications] = React.useState<
+    RequestNotification[]
+  >([])
+
+  React.useEffect(() => {
+    function syncNotifications() {
+      setNotifications(getSavedRequestNotifications())
+    }
+
+    syncNotifications()
+    window.addEventListener(REQUEST_NOTIFICATIONS_EVENT, syncNotifications)
+    window.setTimeout(markRequestNotificationsRead, 0)
+
+    return () => {
+      window.removeEventListener(
+        REQUEST_NOTIFICATIONS_EVENT,
+        syncNotifications
+      )
+    }
+  }, [])
+
+  const pendingCount = notifications.filter(
+    (notification) =>
+      notification.direction === "incoming" && notification.status === "pending"
+  ).length
+
+  return (
+    <section className="mx-auto w-full max-w-3xl space-y-5">
+      <div>
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">
+            Request center
+          </p>
+          <h1 className="text-2xl font-semibold">Notifications</h1>
+        </div>
+      </div>
+
+      <Card className="overflow-hidden border-border/60 bg-card/90 p-0 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur md:rounded-[2rem] dark:shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
+        <div className="border-b border-border/60 bg-[linear-gradient(135deg,color-mix(in_oklch,var(--primary),transparent_88%),transparent_60%),linear-gradient(180deg,color-mix(in_oklch,var(--accent),transparent_80%),transparent)] p-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-[0_16px_36px_color-mix(in_oklch,var(--primary),transparent_72%)]">
+              <Bell className="size-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">Stay close to every reply</p>
+              <p className="text-sm text-muted-foreground">
+                Accept incoming requests fast and keep track of every match
+                update.
+              </p>
+            </div>
+            <Badge variant="secondary" className="rounded-full px-3 py-1">
+              {pendingCount} pending
+            </Badge>
+          </div>
+        </div>
+
+        {notifications.length ? (
+          <div className="divide-y divide-border/60">
+            {notifications.map((notification) => (
+              <NotificationListItem
+                key={notification.id}
+                notification={notification}
+                onOpenProfile={onOpenProfile}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+            <span className="flex size-16 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <Bell className="size-6" />
+            </span>
+            <h2 className="mt-4 text-lg font-semibold">Nothing new yet</h2>
+            <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+              When someone sends a request or replies to yours, it will show up
+              here.
+            </p>
+          </div>
+        )}
+      </Card>
+    </section>
+  )
+}
+
+function SavedView({
+  counts,
+  currentSection,
+  onBack,
+  onOpenIncoming,
+  onOpenLikes,
+  onOpenRequests,
+  onOpenProfile,
+  sourceUsers,
+}: {
+  counts: { incoming: number; likes: number; requests: number }
+  currentSection: "saved" | "requested" | "incoming"
+  onBack: () => void
+  onOpenIncoming: () => void
+  onOpenLikes: () => void
+  onOpenRequests: () => void
+  onOpenProfile: (user: User) => void
+  sourceUsers: RandomUser[]
+}) {
+  const [savedUsers, setSavedUsers] = React.useState<User[]>([])
+  const [incomingNotifications, setIncomingNotifications] = React.useState<
+    RequestNotification[]
+  >([])
+  const [requestedKeys, setRequestedKeys] = React.useState<string[]>([])
+
+  React.useEffect(() => {
+    function syncSavedState() {
+      setIncomingNotifications(
+        getSavedRequestNotifications().filter(
+          (notification) => notification.direction === "incoming"
+        )
+      )
+      setSavedUsers(getSavedProfilesFromStorage())
+      setRequestedKeys(getSavedRequestedProfiles())
+    }
+
+    syncSavedState()
+    window.addEventListener("wimp:liked-users:change", syncSavedState)
+    window.addEventListener(REQUEST_NOTIFICATIONS_EVENT, syncSavedState)
+    window.addEventListener("wimp:requested-profiles:change", syncSavedState)
+
+    return () => {
+      window.removeEventListener("wimp:liked-users:change", syncSavedState)
+      window.removeEventListener(REQUEST_NOTIFICATIONS_EVENT, syncSavedState)
+      window.removeEventListener(
+        "wimp:requested-profiles:change",
+        syncSavedState
+      )
+    }
+  }, [])
+
+  const requestedUsers = React.useMemo(
+    () =>
+      sourceUsers
+        .filter(isProfileUser)
+        .filter((user) => requestedKeys.includes(getProfileKey(user))),
+    [requestedKeys, sourceUsers]
+  )
+  const incomingUsers = React.useMemo(
+    () =>
+      incomingNotifications
+        .map((notification) => {
+          const user = notification.profile ?? getNotificationProfileUser(notification)
+
+          return isProfileUser(user)
+            ? { notification, user }
+            : null
+        })
+        .filter((item): item is { notification: RequestNotification; user: User } =>
+          item !== null
+        ),
+    [incomingNotifications]
+  )
+  const emptyTitle =
+    currentSection === "incoming"
+      ? "No incoming requests yet"
+      : currentSection === "requested"
+      ? "No requested profiles yet"
+      : "No saved profiles yet"
+  const emptyDetail =
+    currentSection === "incoming"
+      ? "New people who request to connect with you will appear here."
+      : currentSection === "requested"
+      ? "Profiles you send requests to will appear here."
+      : "Profiles you save from Discover will appear here."
+
+  return (
+    <section className="mx-auto w-full max-w-4xl space-y-5">
+      <div>
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">
+            Collected profiles
+          </p>
+          <h1 className="text-2xl font-semibold">Saved</h1>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant={currentSection === "saved" ? "default" : "outline"}
+          onClick={onOpenLikes}
+          className="rounded-full"
+        >
+          Saved
+          <Badge variant="secondary" className="ml-2 rounded-full px-2 py-0">
+            {counts.likes}
+          </Badge>
+        </Button>
+        <Button
+          type="button"
+          variant={currentSection === "incoming" ? "default" : "outline"}
+          onClick={onOpenIncoming}
+          className="rounded-full"
+        >
+          Incoming
+          <Badge variant="secondary" className="ml-2 rounded-full px-2 py-0">
+            {counts.incoming}
+          </Badge>
+        </Button>
+        <Button
+          type="button"
+          variant={currentSection === "requested" ? "default" : "outline"}
+          onClick={onOpenRequests}
+          className="rounded-full"
+        >
+          Requested
+          <Badge variant="secondary" className="ml-2 rounded-full px-2 py-0">
+            {counts.requests}
+          </Badge>
+        </Button>
+      </div>
+
+      {currentSection === "incoming" ? (
+        incomingUsers.length ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {incomingUsers.map(({ notification, user }) => (
+              <UserCard
+                key={notification.id}
+                clickableCard
+                incomingRequestId={notification.id}
+                incomingRequestStatus={notification.status}
+                onProfileClick={() => onOpenProfile(user)}
+                onRespondToIncomingRequest={respondToIncomingRequest}
+                showActions
+                user={user}
+              />
+            ))}
+          </div>
+        ) : (
+          <Card className="rounded-[1.75rem] border-border/60 bg-card/90 p-8 text-center shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur dark:shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+            <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+              <Bell className="size-6" />
+            </div>
+            <h2 className="mt-4 text-lg font-semibold">{emptyTitle}</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {emptyDetail}
+            </p>
+          </Card>
+        )
+      ) : currentSection === "requested" ? (
+        requestedUsers.length ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {requestedUsers.map((user) => (
+              <UserCard
+                key={getProfileKey(user)}
+                clickableCard
+                onProfileClick={() => onOpenProfile(user)}
+                showActions
+                showRequestMenu
+                user={user}
+              />
+            ))}
+          </div>
+        ) : (
+          <Card className="rounded-[1.75rem] border-border/60 bg-card/90 p-8 text-center shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur dark:shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+            <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+              <Bell className="size-6" />
+            </div>
+            <h2 className="mt-4 text-lg font-semibold">{emptyTitle}</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {emptyDetail}
+            </p>
+          </Card>
+        )
+      ) : savedUsers.length ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {savedUsers.map((user) => (
+            <UserCard
+              key={getProfileKey(user)}
+              clickableCard
+              onProfileClick={() => onOpenProfile(user)}
+              showActions
+              showRequestMenu
+              user={user}
+            />
+          ))}
+        </div>
+      ) : (
+        <Card className="rounded-[1.75rem] border-border/60 bg-card/90 p-8 text-center shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur dark:shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+          <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+            <Bookmark className="size-6" />
+          </div>
+          <h2 className="mt-4 text-lg font-semibold">{emptyTitle}</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            {emptyDetail}
+          </p>
+        </Card>
+      )}
+    </section>
+  )
+}
+
+function SettingsView({
+  onEditProfile,
+  prefs,
+}: {
+  onEditProfile: () => void
+  prefs: Prefs
+}) {
+  return (
+    <section className="mx-auto w-full max-w-4xl space-y-5">
+      <div>
+        <p className="text-sm font-medium text-muted-foreground">
+          Workspace controls
+        </p>
+        <h1 className="text-2xl font-semibold">Settings</h1>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,0.9fr)]">
+        <Card className="rounded-[1.75rem] border-border/60 bg-card/90 p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur dark:shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+          <div className="flex items-start gap-3">
+            <span className="flex size-12 items-center justify-center rounded-2xl bg-primary/12 text-primary">
+              <Settings2 className="size-5" />
+            </span>
+            <div>
+              <h2 className="text-lg font-semibold">Profile preferences</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Update your dating preferences, profile details, and match
+                criteria whenever you want.
+              </p>
+            </div>
+          </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Badge variant="outline" className="rounded-full px-3 py-1">
+              {prefs.relationshipGoal || "Goal not set"}
+            </Badge>
+            <Badge variant="outline" className="rounded-full px-3 py-1">
+              {prefs.currentCountry || prefs.country || "Location not set"}
+            </Badge>
+          </div>
+          <Button onClick={onEditProfile} className="mt-6 rounded-full">
+            Edit your profile
+          </Button>
+        </Card>
+
+        <Card className="rounded-[1.75rem] border-border/60 bg-card/90 p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur dark:shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+          <p className="text-sm font-medium text-muted-foreground">
+            Account snapshot
+          </p>
+          <h2 className="mt-2 text-lg font-semibold">{prefs.name}</h2>
+          <div className="mt-4 space-y-3 text-sm text-muted-foreground">
+            <p>Gender: <span className="text-foreground">{prefs.gender || "Not set"}</span></p>
+            <p>Age: <span className="text-foreground">{prefs.age || "Not set"}</span></p>
+            <p>
+              Looking for:{" "}
+              <span className="text-foreground">
+                {getMyProfileLookingFor(prefs.relationshipGoal)}
+              </span>
+            </p>
+          </div>
+        </Card>
+      </div>
+    </section>
+  )
+}
+
+function NotificationListItem({
+  notification,
+  onOpenProfile,
+}: {
+  notification: RequestNotification
+  onOpenProfile: (notification: RequestNotification) => void
+}) {
+  const accepted = notification.status === "accepted"
+  const isPendingIncoming =
+    notification.direction === "incoming" && notification.status === "pending"
+  const detail =
+    notification.direction === "incoming"
+      ? notification.status === "pending"
+        ? "sent you a request"
+        : accepted
+          ? "is now in your connections"
+          : "request was declined"
+      : accepted
+        ? "accepted your request"
+        : "rejected your request"
+  const createdAt = new Date(notification.createdAt)
+  const timeLabel = Number.isNaN(createdAt.getTime())
+    ? "Just now"
+    : createdAt.toLocaleString([], {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+
+  return (
+    <div
+      className="flex cursor-pointer flex-col gap-4 p-4 transition hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between sm:p-5"
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpenProfile(notification)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault()
+          onOpenProfile(notification)
+        }
+      }}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        {notification.profileImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={notification.profileImage}
+            alt=""
+            className="size-14 shrink-0 rounded-full object-cover ring-4 ring-background"
+          />
+        ) : (
+          <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-muted">
+            <UserRound className="size-5 text-muted-foreground" />
+          </span>
+        )}
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-base font-semibold">
+              {notification.profileName}
+            </p>
+            {!notification.read ? (
+              <span className="h-2.5 w-2.5 rounded-full bg-primary" />
+            ) : null}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {notification.profileName} {detail}
+          </p>
+          <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            {timeLabel}
+          </p>
+        </div>
+      </div>
+
+      {isPendingIncoming ? (
+        <div className="flex self-start gap-2 sm:self-auto sm:justify-end">
+          <Button
+            type="button"
+            className="flex-1 rounded-full sm:flex-none"
+            onClick={(event) => {
+              event.stopPropagation()
+              respondToIncomingRequest(notification.id, "accepted")
+            }}
+          >
+            <Check className="size-4" />
+            Accept
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive sm:flex-none"
+            onClick={(event) => {
+              event.stopPropagation()
+              respondToIncomingRequest(notification.id, "rejected")
+            }}
+          >
+            <X className="size-4" />
+            Decline
+          </Button>
+        </div>
+      ) : (
+        <Badge
+          variant="outline"
+          className={cn(
+            "self-start rounded-full px-3 py-1 text-xs font-semibold sm:self-auto",
+            accepted
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
+              : "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300"
+          )}
+        >
+          {accepted ? "Accepted" : "Rejected"}
+        </Badge>
+      )}
+    </div>
   )
 }
 
@@ -1934,7 +2803,8 @@ function FilterSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="min-h-0 space-y-6 overflow-y-auto pr-1">
+        <ScrollArea className="min-h-0 flex-1 pr-1">
+          <div className="space-y-6">
           <EditableFilterGroup
             label="Looking for"
             options={FILTER_GENDERS}
@@ -2008,7 +2878,8 @@ function FilterSheet({
               prefs.preferenceHomeCountry || prefs.homeCountry || WORLDWIDE
             }
           />
-        </div>
+          </div>
+        </ScrollArea>
       </SheetContent>
     </Sheet>
   )

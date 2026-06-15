@@ -22,15 +22,15 @@ export default function NotFound() {
           Page not found
         </h1>
         <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-muted-foreground">
-          This page is not part of {APP_NAME}. Return to your dashboard or go
+          This page is not part of {APP_NAME}. Return to Discover or go
           back to the previous page.
         </p>
 
         <div className="mt-6 grid gap-2 sm:grid-cols-2">
           <Button asChild>
-            <Link href="/?view=deck" className="gap-2">
+            <Link href="/?view=discover" className="gap-2">
               <Home className="size-4" />
-              Dashboard
+              Discover
             </Link>
           </Button>
           <Button asChild variant="outline">

@@ -3,7 +3,9 @@
 import * as React from "react"
 import Image from "next/image"
 import {
+  Check,
   Ban,
+  Bookmark,
   BriefcaseBusiness,
   ChevronDown,
   Flag,
@@ -42,6 +44,7 @@ import {
   getLatestRequestStatus,
   REQUEST_NOTIFICATIONS_EVENT,
   scheduleFakeRequestOutcome,
+  type RequestNotificationStatus,
 } from "@/lib/request-notifications"
 
 export type User = {
@@ -69,28 +72,41 @@ export type User = {
 export default function UserCard({
   className,
   countryFlagUrl,
-  hideProfileButton = false,
   homeCountry,
   languages = [],
   occupation,
+  onHideProfile,
   onProfileClick,
+  onRespondToIncomingRequest,
   onEditProfile,
   onRequestSent,
   relationshipLabel,
+  onSaveProfile,
   showRequestMenu = false,
   showActions = true,
   variant = "request",
   user,
+  clickableCard = false,
+  incomingRequestId,
+  incomingRequestStatus,
 }: {
   className?: string
+  clickableCard?: boolean
   countryFlagUrl?: string
-  hideProfileButton?: boolean
   homeCountry?: string
+  incomingRequestId?: string
+  incomingRequestStatus?: RequestNotificationStatus
   languages?: string[]
   occupation?: string
   onEditProfile?: () => void
+  onHideProfile?: () => void
   onProfileClick?: () => void
+  onRespondToIncomingRequest?: (
+    notificationId: string,
+    status: Exclude<RequestNotificationStatus, "pending">
+  ) => void
   onRequestSent?: () => void
+  onSaveProfile?: () => void
   relationshipLabel?: string
   showRequestMenu?: boolean
   showActions?: boolean
@@ -182,15 +198,31 @@ export default function UserCard({
   }, [])
 
   const requestButton = getRequestButtonState(requestStatus, requested)
+  const cardClickable = Boolean(onProfileClick && clickableCard)
 
   return (
     <article
       className={cn(
         "overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm",
+        cardClickable &&
+          "cursor-pointer transition hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
         className
       )}
+      role={cardClickable ? "button" : undefined}
+      tabIndex={cardClickable ? 0 : undefined}
+      onClick={cardClickable ? onProfileClick : undefined}
+      onKeyDown={
+        cardClickable
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault()
+                onProfileClick?.()
+              }
+            }
+          : undefined
+      }
     >
-      <div className="relative h-28 overflow-hidden bg-muted">
+      <div className="relative h-24 overflow-hidden bg-muted">
         <Image
           src={user.picture.large}
           alt=""
@@ -202,8 +234,8 @@ export default function UserCard({
         <div className="absolute inset-0 bg-background/35" />
       </div>
 
-      <div className="-mt-16 flex flex-col p-5 pt-0 text-center">
-        <div className="relative mx-auto size-32 shrink-0 overflow-hidden rounded-full border-4 border-background bg-muted shadow-md sm:size-36">
+      <div className="-mt-14 flex flex-col p-4 pt-0 text-center sm:p-5 sm:pt-0">
+        <div className="relative mx-auto size-28 shrink-0 overflow-hidden rounded-full border-4 border-background bg-muted shadow-md sm:size-32">
           <Image
             src={user.picture.large}
             alt={name}
@@ -214,9 +246,9 @@ export default function UserCard({
           />
         </div>
 
-        <div className="mt-4 min-w-0">
+        <div className="mt-3 min-w-0">
           <div className="flex min-w-0 items-center justify-center gap-2">
-            <h2 className="truncate text-xl font-semibold">{name}</h2>
+            <h2 className="truncate text-lg font-semibold sm:text-xl">{name}</h2>
             <ProfileStatusIcons badges={profileBadges} iconClassName="size-5" />
           </div>
 
@@ -247,7 +279,7 @@ export default function UserCard({
           </div>
         </div>
 
-        <div className="mt-4 space-y-3">
+        <div className="mt-3 space-y-2.5">
           <div className="flex items-center gap-3 text-sm">
             <span className="h-px flex-1 bg-border" />
             <span className="text-xs font-medium text-muted-foreground">
@@ -255,7 +287,7 @@ export default function UserCard({
             </span>
             <span className="h-px flex-1 bg-border" />
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
             <ProfileDetail
               icon={<BriefcaseBusiness className="size-4" />}
               value={displayOccupation}
@@ -283,11 +315,19 @@ export default function UserCard({
         {showActions ? (
           <div
             className={cn(
-              "mt-5 grid gap-2",
-              !hideProfileButton && "sm:grid-cols-2"
+              "mt-4 grid gap-2",
+              !showRequestMenu && variant !== "self" && "sm:grid-cols-2"
             )}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
           >
-            {!hideProfileButton ? (
+            {incomingRequestId ? (
+              <IncomingRequestActions
+                notificationId={incomingRequestId}
+                onRespond={onRespondToIncomingRequest}
+                status={incomingRequestStatus ?? "pending"}
+              />
+            ) : !showRequestMenu && variant !== "self" ? (
               <Button
                 variant="outline"
                 className="gap-2"
@@ -308,7 +348,11 @@ export default function UserCard({
                 icon={requestButton.icon}
                 label={requestButton.label}
                 name={name}
+                onHideProfile={onHideProfile}
                 onMainClick={toggleRequest}
+                onProfileClick={onProfileClick}
+                onSaveProfile={onSaveProfile}
+                savedLabel="Save"
                 variant={requestButton.variant}
                 loading={requestLoading}
               />
@@ -334,12 +378,68 @@ export default function UserCard({
   )
 }
 
+function IncomingRequestActions({
+  notificationId,
+  onRespond,
+  status,
+}: {
+  notificationId: string
+  onRespond?: (
+    notificationId: string,
+    status: Exclude<RequestNotificationStatus, "pending">
+  ) => void
+  status: RequestNotificationStatus
+}) {
+  if (status === "pending") {
+    return (
+      <>
+        <Button
+          type="button"
+          className="gap-2"
+          onClick={() => onRespond?.(notificationId, "accepted")}
+        >
+          <Check className="size-4" />
+          Accept
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          onClick={() => onRespond?.(notificationId, "rejected")}
+        >
+          <X className="size-4" />
+          Reject
+        </Button>
+      </>
+    )
+  }
+
+  return (
+    <div className="sm:col-span-2">
+      <div
+        className={cn(
+          "flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium",
+          status === "accepted"
+            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
+            : "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300"
+        )}
+      >
+        {status === "accepted" ? "Accepted" : "Rejected"}
+      </div>
+    </div>
+  )
+}
+
 function RequestActionGroup({
   disabled,
   icon,
   label,
   name,
+  onHideProfile,
   onMainClick,
+  onProfileClick,
+  onSaveProfile,
+  savedLabel,
   variant,
   loading,
 }: {
@@ -347,26 +447,45 @@ function RequestActionGroup({
   icon: React.ReactNode
   label: string
   name: string
+  onHideProfile?: () => void
   onMainClick: () => void
+  onProfileClick?: () => void
+  onSaveProfile?: () => void
+  savedLabel: string
   variant: "default" | "secondary"
   loading?: boolean
 }) {
   const [open, setOpen] = React.useState(false)
   const menuItems = [
     {
-      icon: <Ban className="size-4" />,
-      label: "Block profile",
-      tone: "danger" as const,
+      icon: <Bookmark className="size-4" />,
+      label: savedLabel,
+      onClick: onSaveProfile,
+      tone: "normal" as const,
     },
     {
-      icon: <Flag className="size-4" />,
-      label: "Report profile",
-      tone: "danger" as const,
+      icon: <UserRound className="size-4" />,
+      label: "Profile",
+      onClick: onProfileClick,
+      tone: "normal" as const,
     },
     {
       icon: <UserRound className="size-4" />,
       label: "Hide profile",
+      onClick: onHideProfile,
       tone: "normal" as const,
+    },
+    {
+      icon: <Flag className="size-4" />,
+      label: "Report profile",
+      onClick: undefined,
+      tone: "danger" as const,
+    },
+    {
+      icon: <Ban className="size-4" />,
+      label: "Block profile",
+      onClick: undefined,
+      tone: "danger" as const,
     },
   ]
 
@@ -399,7 +518,10 @@ function RequestActionGroup({
             <button
               key={item.label}
               type="button"
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                setOpen(false)
+                item.onClick?.()
+              }}
               className={cn(
                 "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition hover:bg-muted",
                 item.tone === "danger" &&

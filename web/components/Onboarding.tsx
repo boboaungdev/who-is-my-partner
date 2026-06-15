@@ -716,7 +716,7 @@ export default function Onboarding({
                 <SectionHeader
                   icon={<Heart className="size-5" />}
                   title="Match preferences"
-                  description="Choose who should appear in your discovery dashboard."
+                  description="Choose who should appear in your Discover feed."
                 />
 
                 <ChoiceGrid

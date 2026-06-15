@@ -17,6 +17,7 @@ export type RequestNotification = {
   profileKey: string
   profileName: string
   profileImage?: string
+  profile?: User
   status: RequestNotificationStatus
   createdAt: string
   read: boolean
@@ -100,6 +101,7 @@ export function createIncomingRequestNotification() {
     profileKey: profile.key,
     profileName: profile.name,
     profileImage: profile.image,
+    profile: profile.user,
     status: "pending",
     createdAt: new Date().toISOString(),
     read: false,
@@ -196,6 +198,7 @@ function createFakeRequestNotification(
     profileKey: getProfileKey(user),
     profileName,
     profileImage: user.picture.large,
+    profile: user,
     status,
     createdAt: new Date().toISOString(),
     read: false,
@@ -251,6 +254,7 @@ type IncomingProfile = {
   key: string
   name: string
   image: string
+  user: User
 }
 
 function getUniqueIncomingProfile() {
@@ -303,100 +307,154 @@ const INCOMING_PROFILES: IncomingProfile[] = [
     key: "incoming-maya-chen",
     name: "Maya Chen",
     image: "https://randomuser.me/api/portraits/women/44.jpg",
+    user: buildIncomingProfileUser("incoming-maya-chen", "Maya", "Chen", "female", 28, "Singapore", "Singapore", "maya.chen", "https://randomuser.me/api/portraits/women/44.jpg"),
   },
   {
     key: "incoming-sofia-rivera",
     name: "Sofia Rivera",
     image: "https://randomuser.me/api/portraits/women/68.jpg",
+    user: buildIncomingProfileUser("incoming-sofia-rivera", "Sofia", "Rivera", "female", 30, "Madrid", "Spain", "sofia.rivera", "https://randomuser.me/api/portraits/women/68.jpg"),
   },
   {
     key: "incoming-emma-wilson",
     name: "Emma Wilson",
     image: "https://randomuser.me/api/portraits/women/12.jpg",
+    user: buildIncomingProfileUser("incoming-emma-wilson", "Emma", "Wilson", "female", 27, "Sydney", "Australia", "emmawilson", "https://randomuser.me/api/portraits/women/12.jpg"),
   },
   {
     key: "incoming-nora-patel",
     name: "Nora Patel",
     image: "https://randomuser.me/api/portraits/women/79.jpg",
+    user: buildIncomingProfileUser("incoming-nora-patel", "Nora", "Patel", "female", 29, "Mumbai", "India", "nora.patel", "https://randomuser.me/api/portraits/women/79.jpg"),
   },
   {
     key: "incoming-ava-morgan",
     name: "Ava Morgan",
     image: "https://randomuser.me/api/portraits/women/32.jpg",
+    user: buildIncomingProfileUser("incoming-ava-morgan", "Ava", "Morgan", "female", 26, "Vancouver", "Canada", "avamorgan", "https://randomuser.me/api/portraits/women/32.jpg"),
   },
   {
     key: "incoming-isabella-kim",
     name: "Isabella Kim",
     image: "https://randomuser.me/api/portraits/women/23.jpg",
+    user: buildIncomingProfileUser("incoming-isabella-kim", "Isabella", "Kim", "female", 31, "Seoul", "South Korea", "isabellakim", "https://randomuser.me/api/portraits/women/23.jpg"),
   },
   {
     key: "incoming-amelia-clark",
     name: "Amelia Clark",
     image: "https://randomuser.me/api/portraits/women/55.jpg",
+    user: buildIncomingProfileUser("incoming-amelia-clark", "Amelia", "Clark", "female", 33, "London", "United Kingdom", "amelia.clark", "https://randomuser.me/api/portraits/women/55.jpg"),
   },
   {
     key: "incoming-hannah-lee",
     name: "Hannah Lee",
     image: "https://randomuser.me/api/portraits/women/71.jpg",
+    user: buildIncomingProfileUser("incoming-hannah-lee", "Hannah", "Lee", "female", 25, "Bangkok", "Thailand", "hannahlee", "https://randomuser.me/api/portraits/women/71.jpg"),
   },
   {
     key: "incoming-mila-roberts",
     name: "Mila Roberts",
     image: "https://randomuser.me/api/portraits/women/36.jpg",
+    user: buildIncomingProfileUser("incoming-mila-roberts", "Mila", "Roberts", "female", 29, "Auckland", "New Zealand", "milaroberts", "https://randomuser.me/api/portraits/women/36.jpg"),
   },
   {
     key: "incoming-zara-bennett",
     name: "Zara Bennett",
     image: "https://randomuser.me/api/portraits/women/90.jpg",
+    user: buildIncomingProfileUser("incoming-zara-bennett", "Zara", "Bennett", "female", 27, "Cape Town", "South Africa", "zarabennett", "https://randomuser.me/api/portraits/women/90.jpg"),
   },
   {
     key: "incoming-liam-carter",
     name: "Liam Carter",
     image: "https://randomuser.me/api/portraits/men/45.jpg",
+    user: buildIncomingProfileUser("incoming-liam-carter", "Liam", "Carter", "male", 30, "Dublin", "Ireland", "liamcarter", "https://randomuser.me/api/portraits/men/45.jpg"),
   },
   {
     key: "incoming-noah-brooks",
     name: "Noah Brooks",
     image: "https://randomuser.me/api/portraits/men/22.jpg",
+    user: buildIncomingProfileUser("incoming-noah-brooks", "Noah", "Brooks", "male", 28, "Chicago", "United States", "noahbrooks", "https://randomuser.me/api/portraits/men/22.jpg"),
   },
   {
     key: "incoming-ethan-walker",
     name: "Ethan Walker",
     image: "https://randomuser.me/api/portraits/men/64.jpg",
+    user: buildIncomingProfileUser("incoming-ethan-walker", "Ethan", "Walker", "male", 32, "Melbourne", "Australia", "ethanwalker", "https://randomuser.me/api/portraits/men/64.jpg"),
   },
   {
     key: "incoming-oliver-stone",
     name: "Oliver Stone",
     image: "https://randomuser.me/api/portraits/men/11.jpg",
+    user: buildIncomingProfileUser("incoming-oliver-stone", "Oliver", "Stone", "male", 31, "Berlin", "Germany", "oliverstone", "https://randomuser.me/api/portraits/men/11.jpg"),
   },
   {
     key: "incoming-lucas-hayes",
     name: "Lucas Hayes",
     image: "https://randomuser.me/api/portraits/men/52.jpg",
+    user: buildIncomingProfileUser("incoming-lucas-hayes", "Lucas", "Hayes", "male", 29, "Lisbon", "Portugal", "lucashayes", "https://randomuser.me/api/portraits/men/52.jpg"),
   },
   {
     key: "incoming-james-cooper",
     name: "James Cooper",
     image: "https://randomuser.me/api/portraits/men/73.jpg",
+    user: buildIncomingProfileUser("incoming-james-cooper", "James", "Cooper", "male", 34, "Toronto", "Canada", "jamescooper", "https://randomuser.me/api/portraits/men/73.jpg"),
   },
   {
     key: "incoming-benjamin-reed",
     name: "Benjamin Reed",
     image: "https://randomuser.me/api/portraits/men/38.jpg",
+    user: buildIncomingProfileUser("incoming-benjamin-reed", "Benjamin", "Reed", "male", 33, "Amsterdam", "Netherlands", "benjaminreed", "https://randomuser.me/api/portraits/men/38.jpg"),
   },
   {
     key: "incoming-daniel-price",
     name: "Daniel Price",
     image: "https://randomuser.me/api/portraits/men/84.jpg",
+    user: buildIncomingProfileUser("incoming-daniel-price", "Daniel", "Price", "male", 27, "Copenhagen", "Denmark", "danielprice", "https://randomuser.me/api/portraits/men/84.jpg"),
   },
   {
     key: "incoming-mason-hughes",
     name: "Mason Hughes",
     image: "https://randomuser.me/api/portraits/men/27.jpg",
+    user: buildIncomingProfileUser("incoming-mason-hughes", "Mason", "Hughes", "male", 28, "Los Angeles", "United States", "masonhughes", "https://randomuser.me/api/portraits/men/27.jpg"),
   },
   {
     key: "incoming-henry-scott",
     name: "Henry Scott",
     image: "https://randomuser.me/api/portraits/men/91.jpg",
+    user: buildIncomingProfileUser("incoming-henry-scott", "Henry", "Scott", "male", 35, "Edinburgh", "United Kingdom", "henryscott", "https://randomuser.me/api/portraits/men/91.jpg"),
   },
 ]
+
+function buildIncomingProfileUser(
+  key: string,
+  first: string,
+  last: string,
+  gender: "male" | "female",
+  age: number,
+  city: string,
+  country: string,
+  username: string,
+  image: string
+): User {
+  return {
+    gender,
+    name: { first, last },
+    location: { city, country },
+    dob: { age, date: getBirthdayForAge(age) },
+    picture: { large: image },
+    login: { uuid: key, username },
+    email: `${username}@example.com`,
+    nat: country,
+  }
+}
+
+function getBirthdayForAge(age: number) {
+  const today = new Date()
+  const birthday = new Date(
+    today.getFullYear() - age,
+    today.getMonth(),
+    today.getDate()
+  )
+
+  return birthday.toISOString()
+}
