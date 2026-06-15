@@ -88,6 +88,8 @@ type Prefs = {
   country?: string
   city?: string
   location?: string
+  preferenceHomeCountry?: string
+  preferenceCurrentCountry?: string
   occupation?: string
   maritalStatus?: string
   languages?: string[]
@@ -211,15 +213,25 @@ function shapeUserForFilters(
 ): RandomUser {
   const agePool = getFilteredAgePool(prefs)
   const age = agePool.length ? agePool[index % agePool.length] : user.dob?.age
-  const currentCountry = isWorldwide(prefs.currentCountry || prefs.country)
+  const profileCurrentCountry = prefs.currentCountry || prefs.country
+  const filterCurrentCountry =
+    prefs.preferenceCurrentCountry ?? profileCurrentCountry
+  const profileHomeCountry = prefs.homeCountry || prefs.country
+  const filterHomeCountry = prefs.preferenceHomeCountry ?? profileHomeCountry
+  const currentCountry = isWorldwide(filterCurrentCountry)
     ? undefined
-    : prefs.currentCountry || prefs.country
-  const homeCountry = isWorldwide(prefs.homeCountry)
+    : filterCurrentCountry
+  const homeCountry = isWorldwide(filterHomeCountry)
     ? undefined
-    : prefs.homeCountry
+    : filterHomeCountry
   const cities = getCities(currentCountry, locationOptions)
+  const profileCityMatchesFilter =
+    normalizeCountryName(currentCountry) === normalizeCountryName(profileCurrentCountry)
+  const profileCity = profileCityMatchesFilter
+    ? prefs.currentCity || prefs.city
+    : undefined
   const currentCity = currentCountry
-    ? prefs.currentCity || prefs.city || cities[index % cities.length]
+    ? profileCity || (cities.length ? cities[index % cities.length] : undefined)
     : undefined
 
   return {
@@ -469,22 +481,8 @@ export default function Page() {
     if (!prefs) return users
     return users.filter((u: RandomUser) => {
       const gender = u.gender
-      const age = u.dob?.age
       if (prefs.partnerGenders && !prefs.partnerGenders.includes("any")) {
         if (!prefs.partnerGenders.includes(gender ?? "")) return false
-      }
-      if (
-        prefs.partnerAges &&
-        prefs.partnerAges.length > 0 &&
-        !prefs.partnerAges.includes("any")
-      ) {
-        const ok = prefs.partnerAges.some((r: string) => {
-          if (!age) return false
-          if (r === "41+") return age >= 41
-          const parts = r.split("-").map(Number)
-          return age >= parts[0] && age <= parts[1]
-        })
-        if (!ok) return false
       }
       return true
     })
@@ -1401,45 +1399,43 @@ function FilterSheet({
   }
 
   function updateHomeCountry(value: string) {
-    const homeCountry =
+    const preferenceHomeCountry =
       value === WORLDWIDE
         ? WORLDWIDE
-        : value === SAME_AS_CURRENT_LOCATION
-        ? prefs.currentCountry || prefs.country || prefs.homeCountry || ""
+        : value === SAME_AS_MY_COUNTRY
+        ? prefs.homeCountry || prefs.country || ""
         : value
 
     onPrefsChange({
       ...prefs,
-      homeCountry,
+      preferenceHomeCountry,
     })
   }
 
   function updateCurrentCountry(value: string) {
-    const currentCountry =
+    const preferenceCurrentCountry =
       value === WORLDWIDE
         ? WORLDWIDE
-        : value === SAME_AS_MY_COUNTRY
-        ? prefs.homeCountry || prefs.currentCountry || prefs.country || ""
+        : value === SAME_AS_CURRENT_LOCATION
+        ? prefs.currentCountry || prefs.country || ""
         : value
 
     onPrefsChange({
       ...prefs,
-      currentCountry,
-      currentCity: "",
-      country: currentCountry,
-      city: "",
-      location: currentCountry === WORLDWIDE ? "Worldwide" : currentCountry,
+      preferenceCurrentCountry,
     })
   }
 
-  function toggleFilter(values: string[], value: string) {
-    if (value === "any") return values.includes("any") ? [] : ["any"]
-    const next = values.filter((item) => item !== "any")
-    const selected = next.includes(value)
-      ? next.filter((item) => item !== value)
-      : [...next, value]
+  function toggleAgeFilter(value: string) {
+    if (value === "any") return ["any"]
 
-    return selected.length ? selected : ["any"]
+    const ageRanges = FILTER_AGES.filter((range) => range !== "any")
+    const next = prefs.partnerAges.includes(value)
+      ? prefs.partnerAges.filter((range) => range !== value && range !== "any")
+      : [...prefs.partnerAges.filter((range) => range !== "any"), value]
+
+    if (ageRanges.every((range) => next.includes(range))) return ["any"]
+    return next.length ? next : ["any"]
   }
 
   return (
@@ -1454,9 +1450,6 @@ function FilterSheet({
           <span className="flex items-center gap-2">
             <Filter className="size-4" />
             Filters
-          </span>
-          <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-            {matchingCount}
           </span>
         </Button>
       </SheetTrigger>
@@ -1474,12 +1467,7 @@ function FilterSheet({
             label="Looking for"
             options={FILTER_GENDERS}
             selected={prefs.partnerGenders}
-            onToggle={(value) =>
-              update(
-                "partnerGenders",
-                toggleFilter(prefs.partnerGenders, value)
-              )
-            }
+            onToggle={(value) => update("partnerGenders", [value])}
           />
           <EditableFilterGroup
             label="Age range"
@@ -1488,8 +1476,37 @@ function FilterSheet({
               label: value === "any" ? "Any" : value,
             }))}
             selected={prefs.partnerAges}
-            onToggle={(value) =>
-              update("partnerAges", toggleFilter(prefs.partnerAges, value))
+            onToggle={(value) => update("partnerAges", toggleAgeFilter(value))}
+          />
+
+          <CountrySelectField
+            disabled={locationsLoading || countryItems.length === 0}
+            items={[
+              {
+                value: WORLDWIDE,
+                label: "Worldwide",
+                icon: <Globe2 className="size-4" />,
+              },
+              {
+                value: SAME_AS_CURRENT_LOCATION,
+                label: "Same as my current location",
+                iconUrl: getCountryFlagUrl(
+                  prefs.currentCountry || prefs.country,
+                  countryMeta
+                ),
+              },
+              ...countryItems,
+            ]}
+            label="Current location"
+            onValueChange={updateCurrentCountry}
+            placeholder={
+              locationsLoading ? "Loading countries..." : "Select current country"
+            }
+            value={
+              prefs.preferenceCurrentCountry ||
+              prefs.currentCountry ||
+              prefs.country ||
+              WORLDWIDE
             }
           />
 
@@ -1508,38 +1525,12 @@ function FilterSheet({
               },
               ...countryItems,
             ]}
-            label="Current location"
-            onValueChange={updateCurrentCountry}
-            placeholder={
-              locationsLoading ? "Loading countries..." : "Select current country"
-            }
-            value={prefs.currentCountry || prefs.country || WORLDWIDE}
-          />
-
-          <CountrySelectField
-            disabled={locationsLoading || countryItems.length === 0}
-            items={[
-              {
-                value: WORLDWIDE,
-                label: "Worldwide",
-                icon: <Globe2 className="size-4" />,
-              },
-              {
-                value: SAME_AS_CURRENT_LOCATION,
-                label: "Same as current location",
-                iconUrl: getCountryFlagUrl(
-                  prefs.currentCountry || prefs.country,
-                  countryMeta
-                ),
-              },
-              ...countryItems,
-            ]}
             label="Home country"
             onValueChange={updateHomeCountry}
             placeholder={
               locationsLoading ? "Loading countries..." : "Select home country"
             }
-            value={prefs.homeCountry || WORLDWIDE}
+            value={prefs.preferenceHomeCountry || prefs.homeCountry || WORLDWIDE}
           />
 
         </div>
