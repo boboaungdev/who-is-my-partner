@@ -131,6 +131,7 @@ export default function UserCard({
   user: User
 }) {
   const name = `${user.name.first} ${user.name.last}`
+  const normalizedName = name.trim()
   const location = [
     user.location.city,
     user.location.state,
@@ -236,6 +237,14 @@ export default function UserCard({
     requestedActionLabel
   )
   const cardClickable = Boolean(onProfileClick && clickableCard)
+  const hasProfileImage = Boolean(user.picture.large)
+  const initials = normalizedName
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase()
 
   return (
     <article
@@ -260,32 +269,44 @@ export default function UserCard({
       }
     >
       <div className="relative h-24 overflow-hidden bg-muted">
-        <Image
-          src={user.picture.large}
-          alt=""
-          fill
-          sizes="480px"
-          priority
-          className="scale-110 object-cover blur-sm"
-        />
+        {hasProfileImage ? (
+          <Image
+            src={user.picture.large}
+            alt=""
+            fill
+            sizes="480px"
+            priority
+            className="scale-110 object-cover blur-sm"
+          />
+        ) : (
+          <div className="flex size-full items-center justify-center bg-primary/10 text-primary">
+            <span className="text-xl font-semibold">{initials || "U"}</span>
+          </div>
+        )}
         <div className="absolute inset-0 bg-background/35" />
       </div>
 
       <div className="-mt-14 flex flex-col p-4 pt-0 text-center sm:p-5 sm:pt-0">
         <div className="relative mx-auto size-28 shrink-0 overflow-hidden rounded-full border-4 border-background bg-muted shadow-md sm:size-32">
-          <Image
-            src={user.picture.large}
-            alt={name}
-            fill
-            sizes="144px"
-            priority
-            className="object-cover"
-          />
+          {hasProfileImage ? (
+            <Image
+              src={user.picture.large}
+              alt={normalizedName}
+              fill
+              sizes="144px"
+              priority
+              className="object-cover"
+            />
+          ) : (
+            <div className="flex size-full items-center justify-center bg-primary font-semibold text-primary-foreground">
+              <span className="text-3xl">{initials || "U"}</span>
+            </div>
+          )}
         </div>
 
         <div className="mt-3 min-w-0">
           <div className="flex min-w-0 items-center justify-center gap-2">
-            <h2 className="truncate text-lg font-semibold sm:text-xl">{name}</h2>
+            <h2 className="truncate text-lg font-semibold sm:text-xl">{normalizedName}</h2>
             <ProfileStatusIcons badges={profileBadges} iconClassName="size-5" />
           </div>
 

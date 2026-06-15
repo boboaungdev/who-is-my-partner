@@ -18,6 +18,7 @@ import {
   Globe2,
   HeartHandshake,
   House,
+  ImagePlus,
   Languages,
   Mail,
   MapPin,
@@ -40,7 +41,13 @@ import UserCard, { type User } from "@/components/UserCard"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -106,6 +113,7 @@ type GalleryPhoto = {
   title: string
   url: string
   thumbnailUrl: string
+  uploaded?: boolean
 }
 
 type Prefs = {
@@ -369,6 +377,7 @@ export default function Page() {
   const router = useRouter()
   const [users, setUsers] = useState<RandomUser[]>([])
   const [loading, setLoading] = useState(false)
+  const [appReady, setAppReady] = useState(false)
   const [prefs, setPrefs] = useState<Prefs | null>(null)
   const [view, setView] = useState<AppView>("home")
   const [connectionsSection, setConnectionsSection] = useState<
@@ -487,7 +496,7 @@ export default function Page() {
     }
   }
 
-  async function fetchUsers(count = INITIAL_PROFILE_COUNT) {
+  async function fetchUsers(count = INITIAL_PROFILE_COUNT): Promise<void> {
     if (fetchingUsersRef.current) return
 
     fetchingUsersRef.current = true
@@ -525,8 +534,13 @@ export default function Page() {
   }
 
   useEffect(() => {
-    setTimeout(() => {
+    let cancelled = false
+
+    void Promise.resolve().then(() => {
+      if (cancelled) return
+
       void fetchUsers(INITIAL_PROFILE_COUNT)
+
       try {
         const raw = localStorage.getItem("wimp:onboard:v2")
         const selectedRaw = localStorage.getItem("wimp:selected-user:v1")
@@ -553,8 +567,14 @@ export default function Page() {
         }
       } catch {
         // ignore
+      } finally {
+        if (!cancelled) setAppReady(true)
       }
-    }, 0)
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -847,6 +867,31 @@ export default function Page() {
       </div>
     </div>
   )
+
+  if (!appReady) {
+    return (
+      <div className="flex min-h-svh flex-col bg-background text-foreground">
+        <div className="border-b border-border/60">
+          <div className="mx-auto flex h-20 w-full max-w-7xl items-center justify-between px-4 sm:px-6">
+            <Skeleton className="h-9 w-28 rounded-full" />
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-9 w-24 rounded-full" />
+              <Skeleton className="size-10 rounded-full" />
+            </div>
+          </div>
+        </div>
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:py-8">
+          <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
+            <Skeleton className="hidden h-[28rem] rounded-[1.75rem] lg:block" />
+            <div className="space-y-5">
+              <Skeleton className="h-16 rounded-[1.75rem]" />
+              <Skeleton className="h-[32rem] rounded-[1.75rem]" />
+            </div>
+          </div>
+        </main>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-svh flex-col bg-background text-foreground">
@@ -2080,6 +2125,61 @@ function getGalleryImageUrl(photoId: number, size: "full" | "thumb") {
   return `https://picsum.photos/seed/jsonplaceholder-${photoId}/${dimensions}`
 }
 
+function getCustomGalleryStorageKey(seed: string) {
+  return `wimp:gallery:${seed}`
+}
+
+function getSavedGalleryPhotos(seed: string) {
+  if (typeof window === "undefined") return []
+
+  try {
+    const raw = localStorage.getItem(getCustomGalleryStorageKey(seed))
+    const photos = raw ? JSON.parse(raw) : []
+    return Array.isArray(photos)
+      ? photos.filter(
+          (photo): photo is GalleryPhoto =>
+            typeof photo?.id === "number" &&
+            typeof photo?.title === "string" &&
+            typeof photo?.url === "string" &&
+            typeof photo?.thumbnailUrl === "string"
+        )
+      : []
+  } catch {
+    return []
+  }
+}
+
+function saveGalleryPhotos(seed: string, photos: GalleryPhoto[]) {
+  try {
+    localStorage.setItem(getCustomGalleryStorageKey(seed), JSON.stringify(photos))
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function getGalleryPhotoSrc(photo: GalleryPhoto, size: "full" | "thumb") {
+  if (photo.uploaded) {
+    return size === "full" ? photo.url : photo.thumbnailUrl
+  }
+
+  return getGalleryImageUrl(photo.id, size)
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result)
+      } else {
+        reject(new Error("Failed to read file"))
+      }
+    }
+    reader.onerror = () => reject(new Error("Failed to read file"))
+    reader.readAsDataURL(file)
+  })
+}
+
 function useProfileGallery(seed: string) {
   const [photos, setPhotos] = React.useState<GalleryPhoto[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -2127,13 +2227,25 @@ function useProfileGallery(seed: string) {
 function ProfileGallery({
   seed,
   title = "Photo gallery",
+  allowUpload = false,
 }: {
   seed: string
   title?: string
+  allowUpload?: boolean
 }) {
-  const { photos, loading, error } = useProfileGallery(seed)
+  const { photos: remotePhotos, loading, error } = useProfileGallery(seed)
+  const [uploadedPhotos, setUploadedPhotos] = React.useState<GalleryPhoto[]>(() =>
+    allowUpload ? getSavedGalleryPhotos(seed) : []
+  )
   const [activeIndex, setActiveIndex] = React.useState<number | null>(null)
+  const [customUploadTitle, setCustomUploadTitle] = React.useState("")
+  const [uploadDialogOpen, setUploadDialogOpen] = React.useState(false)
   const [loadedFullPhotoIds, setLoadedFullPhotoIds] = React.useState<number[]>([])
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null)
+  const photos = React.useMemo(
+    () => [...uploadedPhotos, ...remotePhotos].slice(0, 8),
+    [remotePhotos, uploadedPhotos]
+  )
   const activePhoto = activeIndex === null ? null : photos[activeIndex]
   const activePhotoNumber = activeIndex === null ? null : activeIndex + 1
   const activePhotoLoaded = activePhoto
@@ -2178,7 +2290,7 @@ function ProfileGallery({
       if (loadedFullPhotoIds.includes(photo.id)) return
 
       const image = new window.Image()
-      image.src = getGalleryImageUrl(photo.id, "full")
+      image.src = getGalleryPhotoSrc(photo, "full")
       image.onload = () => {
         setLoadedFullPhotoIds((current) =>
           current.includes(photo.id) ? current : [...current, photo.id]
@@ -2199,6 +2311,53 @@ function ProfileGallery({
     )
   }
 
+  function openUploadPicker() {
+    setUploadDialogOpen(false)
+    window.setTimeout(() => fileInputRef.current?.click(), 0)
+  }
+
+  async function handleGalleryUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []).filter((file) =>
+      file.type.startsWith("image/")
+    )
+    if (!files.length) return
+
+    const titleBase = customUploadTitle.trim()
+
+    const nextUploadedPhotos = (
+      await Promise.all(
+        files.map(async (file, index) => {
+          const dataUrl = await readFileAsDataUrl(file)
+          const fallbackTitle =
+            file.name.replace(/\.[^/.]+$/, "") || `Uploaded photo ${index + 1}`
+          const resolvedTitle = titleBase
+            ? files.length === 1
+              ? titleBase
+              : `${titleBase} ${index + 1}`
+            : fallbackTitle
+
+          return {
+            albumId: 0,
+            id: Date.now() + index,
+            title: resolvedTitle,
+            url: dataUrl,
+            thumbnailUrl: dataUrl,
+            uploaded: true,
+          } satisfies GalleryPhoto
+        })
+      )
+    ).reverse()
+
+    setUploadedPhotos((current) => {
+      const next = [...nextUploadedPhotos, ...current].slice(0, 8)
+      saveGalleryPhotos(seed, next)
+      return next
+    })
+
+    event.target.value = ""
+    setCustomUploadTitle("")
+  }
+
   return (
     <>
       <Card className="mt-5 rounded-[1.75rem] border-border/60 bg-card/95 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur dark:shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
@@ -2209,9 +2368,63 @@ function ProfileGallery({
               A few extra moments from this profile.
             </p>
           </div>
-          <Badge variant="outline" className="rounded-full px-3 py-1">
-            8 photos
-          </Badge>
+          <div className="flex items-center gap-2">
+            {allowUpload ? (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleGalleryUpload}
+                />
+                <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full"
+                    onClick={() => setUploadDialogOpen(true)}
+                  >
+                    <ImagePlus className="size-4" />
+                    Upload
+                  </Button>
+                  <DialogContent className="max-w-md rounded-[1.5rem] border-border/60 p-5 sm:p-6">
+                    <DialogHeader>
+                      <DialogTitle>Add photo</DialogTitle>
+                      <DialogDescription>
+                        Add an optional custom title, then choose one or more photos.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <Input
+                        value={customUploadTitle}
+                        onChange={(event) => setCustomUploadTitle(event.target.value)}
+                        placeholder="Custom photo title"
+                        className="rounded-xl"
+                      />
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => setUploadDialogOpen(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button type="button" className="rounded-full" onClick={openUploadPicker}>
+                          Choose photos
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </>
+            ) : null}
+            <Badge variant="outline" className="rounded-full px-3 py-1">
+              {photos.length} photos
+            </Badge>
+          </div>
         </div>
 
         {loading ? (
@@ -2246,7 +2459,7 @@ function ProfileGallery({
                 )}
               >
                 <Image
-                  src={getGalleryImageUrl(photo.id, "thumb")}
+                  src={getGalleryPhotoSrc(photo, "thumb")}
                   alt={photo.title}
                   fill
                   sizes={index === 0 ? "(max-width: 640px) 100vw, 66vw" : "(max-width: 640px) 50vw, 33vw"}
@@ -2273,7 +2486,7 @@ function ProfileGallery({
 
             <div className="relative overflow-hidden rounded-[1.25rem] bg-muted">
               <Image
-                src={getGalleryImageUrl(activePhoto.id, "thumb")}
+                src={getGalleryPhotoSrc(activePhoto, "thumb")}
                 alt={activePhoto.title}
                 width={900}
                 height={900}
@@ -2282,7 +2495,7 @@ function ProfileGallery({
               />
               {activePhotoLoaded ? (
                 <Image
-                  src={getGalleryImageUrl(activePhoto.id, "full")}
+                  src={getGalleryPhotoSrc(activePhoto, "full")}
                   alt={activePhoto.title}
                   fill
                   sizes="100vw"
@@ -2398,7 +2611,7 @@ function SavedUserProfile({
         showRequestMenu
         user={user}
       />
-      <ProfileGallery seed={gallerySeed} />
+      <ProfileGallery key={gallerySeed} seed={gallerySeed} />
     </section>
   )
 }
@@ -2436,7 +2649,12 @@ function MyProfileView({
         user={user}
         variant="self"
       />
-      <ProfileGallery seed={gallerySeed} title="Your gallery" />
+      <ProfileGallery
+        key={gallerySeed}
+        seed={gallerySeed}
+        title="Your gallery"
+        allowUpload
+      />
     </section>
   )
 }
@@ -3109,7 +3327,8 @@ function NotificationListItem({
 }
 
 function getPrefsProfileUser(prefs: Prefs, avatar?: string | null): User {
-  const [firstName, ...lastNameParts] = (prefs.name || "Your Profile").split(
+  const trimmedName = prefs.name.trim() || "You"
+  const [firstName, ...lastNameParts] = trimmedName.split(
     " "
   )
   const currentCountry = prefs.currentCountry || prefs.country || "Not set"
@@ -3118,8 +3337,8 @@ function getPrefsProfileUser(prefs: Prefs, avatar?: string | null): User {
   return {
     gender: prefs.gender,
     name: {
-      first: firstName || "Your",
-      last: lastNameParts.join(" ") || "Profile",
+      first: firstName || "You",
+      last: lastNameParts.join(" "),
     },
     location: {
       city: currentCity,
@@ -3130,7 +3349,7 @@ function getPrefsProfileUser(prefs: Prefs, avatar?: string | null): User {
       date: prefs.birthday,
     },
     picture: {
-      large: avatar || "/icon.svg",
+      large: avatar || "",
     },
     login: {
       uuid: "my-profile",
@@ -3504,13 +3723,15 @@ function FilterRow({ label, values }: { label: string; values: string[] }) {
   return (
     <div>
       <p className="mb-2 text-xs font-medium text-muted-foreground">{label}</p>
-      <div className="flex flex-wrap gap-2">
-        {values.map((value) => (
-          <Badge key={value} variant="outline" className="capitalize">
-            {value}
-          </Badge>
-        ))}
-      </div>
+      <ScrollArea className="w-full whitespace-nowrap">
+        <div className="flex w-max gap-2 pb-3">
+          {values.map((value) => (
+            <Badge key={value} variant="outline" className="capitalize">
+              {value}
+            </Badge>
+          ))}
+        </div>
+      </ScrollArea>
     </div>
   )
 }
