@@ -260,7 +260,8 @@ function shapeUserForFilters(
     : filterHomeCountry
   const cities = getCities(currentCountry, locationOptions)
   const profileCityMatchesFilter =
-    normalizeCountryName(currentCountry) === normalizeCountryName(profileCurrentCountry)
+    normalizeCountryName(currentCountry) ===
+    normalizeCountryName(profileCurrentCountry)
   const profileCity = profileCityMatchesFilter
     ? prefs.currentCity || prefs.city
     : undefined
@@ -678,12 +679,14 @@ export default function Page() {
       </main>
       <Sheet open={profileSheetOpen} onOpenChange={setProfileSheetOpen}>
         <SheetContent
-          side="right"
-          className="w-[min(48rem,calc(100vw-1rem))] overflow-y-auto sm:w-[min(48rem,calc(100vw-2rem))]"
+          side="bottom"
+          className="overflow-y-auto sm:w-[min(48rem,calc(100vw-2rem))]"
         >
           <SheetHeader>
             <SheetTitle>Edit profile</SheetTitle>
-            <SheetDescription>Make quick changes to your account.</SheetDescription>
+            <SheetDescription>
+              Make quick changes to your account.
+            </SheetDescription>
           </SheetHeader>
           {prefs ? (
             <SimpleProfileEditForm
@@ -771,7 +774,10 @@ function SimpleProfileEditForm({
       ...current,
       currentCity: value,
       city: value,
-      location: formatProfileLocation(value, current.currentCountry || current.country),
+      location: formatProfileLocation(
+        value,
+        current.currentCountry || current.country
+      ),
     }))
   }
 
@@ -798,11 +804,7 @@ function SimpleProfileEditForm({
         <div className="size-16 overflow-hidden rounded-full border bg-muted">
           {draft.avatar ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={draft.avatar}
-              alt=""
-              className="size-full object-cover"
-            />
+            <img src={draft.avatar} alt="" className="size-full object-cover" />
           ) : (
             <div className="flex size-full items-center justify-center text-muted-foreground">
               <UserRound className="size-6" />
@@ -893,7 +895,10 @@ function SimpleProfileEditForm({
             value={draft.occupation ?? ""}
             placeholder="Business Owner"
             onChange={(event) =>
-              update("occupation", sanitizeProfileOccupation(event.target.value))
+              update(
+                "occupation",
+                sanitizeProfileOccupation(event.target.value)
+              )
             }
             onKeyDown={(event) => {
               if (event.key === ",") event.preventDefault()
@@ -935,7 +940,7 @@ function SimpleProfileEditForm({
         </SimpleEditField>
       </div>
 
-      <div className="sticky bottom-0 -mx-4 flex justify-end gap-2 border-t bg-background/95 px-4 py-4 backdrop-blur sm:-mx-6 sm:px-6">
+      <div className="sticky bottom-0 -mx-4 grid gap-2 border-t bg-background/95 px-4 py-4 backdrop-blur sm:-mx-6 sm:flex sm:justify-end sm:px-6">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
@@ -1098,7 +1103,7 @@ function AppFooter() {
                 target="_blank"
                 rel="noreferrer"
                 aria-label={social.label}
-                className="flex size-9 items-center justify-center rounded-full border text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+                className="flex size-9 items-center justify-center rounded-full border text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
               >
                 <Icon className="size-4" />
               </a>
@@ -1356,9 +1361,7 @@ function CarouselProfileCard({
   const gender = user?.gender ?? fallbackGenders[fallbackIndex]
   const country = user?.location?.country
   const homeCountry =
-    getCountryName(user?.nat, countryMeta) ??
-    country ??
-    "Home country"
+    getCountryName(user?.nat, countryMeta) ?? country ?? "Home country"
   const countryFlagUrl =
     getCountryFlagUrl(user?.nat, countryMeta) ??
     getCountryFlagUrl(country, countryMeta)
@@ -1379,7 +1382,7 @@ function CarouselProfileCard({
         "absolute top-0 h-[505px] w-[min(21rem,78vw)] overflow-hidden border-border/80 p-0 transition-all duration-700 ease-out motion-safe:will-change-transform sm:h-[525px]",
         stackClasses[fallbackIndex],
         active
-          ? "animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 shadow-xl shadow-primary/5"
+          ? "animate-in shadow-xl shadow-primary/5 fade-in-0 zoom-in-95 slide-in-from-bottom-4"
           : "shadow-sm"
       )}
     >
@@ -1710,7 +1713,9 @@ function MyProfileView({
 }
 
 function getPrefsProfileUser(prefs: Prefs, avatar?: string | null): User {
-  const [firstName, ...lastNameParts] = (prefs.name || "Your Profile").split(" ")
+  const [firstName, ...lastNameParts] = (prefs.name || "Your Profile").split(
+    " "
+  )
   const currentCountry = prefs.currentCountry || prefs.country || "Not set"
   const currentCity = prefs.currentCity || prefs.city || "Not set"
 
@@ -1871,8 +1876,8 @@ function FilterSheet({
       value === WORLDWIDE
         ? WORLDWIDE
         : value === SAME_AS_MY_COUNTRY
-        ? prefs.homeCountry || prefs.country || ""
-        : value
+          ? prefs.homeCountry || prefs.country || ""
+          : value
 
     onPrefsChange({
       ...prefs,
@@ -1885,8 +1890,8 @@ function FilterSheet({
       value === WORLDWIDE
         ? WORLDWIDE
         : value === SAME_AS_CURRENT_LOCATION
-        ? prefs.currentCountry || prefs.country || ""
-        : value
+          ? prefs.currentCountry || prefs.country || ""
+          : value
 
     onPrefsChange({
       ...prefs,
@@ -1925,8 +1930,7 @@ function FilterSheet({
         <SheetHeader>
           <SheetTitle>Preferences</SheetTitle>
           <SheetDescription>
-            {matchingCount} matching profile
-            {matchingCount === 1 ? "" : "s"} in your dashboard.
+            Filters to help you find the right matches.
           </SheetDescription>
         </SheetHeader>
 
@@ -1968,7 +1972,9 @@ function FilterSheet({
             label="Current location"
             onValueChange={updateCurrentCountry}
             placeholder={
-              locationsLoading ? "Loading countries..." : "Select current country"
+              locationsLoading
+                ? "Loading countries..."
+                : "Select current country"
             }
             value={
               prefs.preferenceCurrentCountry ||
@@ -1998,9 +2004,10 @@ function FilterSheet({
             placeholder={
               locationsLoading ? "Loading countries..." : "Select home country"
             }
-            value={prefs.preferenceHomeCountry || prefs.homeCountry || WORLDWIDE}
+            value={
+              prefs.preferenceHomeCountry || prefs.homeCountry || WORLDWIDE
+            }
           />
-
         </div>
       </SheetContent>
     </Sheet>
