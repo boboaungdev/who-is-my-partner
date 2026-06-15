@@ -33,6 +33,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   getProfileKey,
   getSavedRequestedProfiles,
@@ -68,6 +69,8 @@ type DeckUser = {
   nat?: string
 }
 
+const AUTO_LOAD_THRESHOLD = 10
+
 export default function SwipeDeck({
   getCountryFlagUrl,
   getHomeCountry,
@@ -93,6 +96,8 @@ export default function SwipeDeck({
   const [clearRequestsOpen, setClearRequestsOpen] = useState(false)
   const [restored, setRestored] = useState(false)
   const [seenProfileKeys, setSeenProfileKeys] = useState<string[]>([])
+  const onLoadMoreRef = React.useRef(onLoadMore)
+  const lastAutoLoadUserCountRef = React.useRef(0)
 
   const safeUsers = users.filter(isCardUser)
   const hiddenProfileKeys = React.useMemo(
@@ -115,6 +120,19 @@ export default function SwipeDeck({
   React.useEffect(() => {
     if (idx >= deckUsers.length) setIdx(0)
   }, [idx, deckUsers.length])
+
+  React.useEffect(() => {
+    onLoadMoreRef.current = onLoadMore
+  }, [onLoadMore])
+
+  React.useEffect(() => {
+    if (safeUsers.length === 0) return
+    if (deckUsers.length > AUTO_LOAD_THRESHOLD) return
+    if (lastAutoLoadUserCountRef.current === safeUsers.length) return
+
+    lastAutoLoadUserCountRef.current = safeUsers.length
+    onLoadMoreRef.current?.()
+  }, [deckUsers.length, safeUsers.length])
 
   React.useEffect(() => {
     setLikedUsers(getSavedProfiles("wimp:liked-users:v1"))
@@ -150,9 +168,14 @@ export default function SwipeDeck({
     }
 
     setIdx(0)
-    if (deckUsers.length <= 3) {
+    if (deckUsers.length <= AUTO_LOAD_THRESHOLD) {
       onLoadMore?.()
     }
+  }
+
+  function restartViewedProfiles() {
+    setSeenProfileKeys([])
+    setIdx(0)
   }
 
   function clearLikedProfiles() {
@@ -172,20 +195,7 @@ export default function SwipeDeck({
   }
 
   if (!safeUsers.length) {
-    return (
-      <Card className="mx-auto max-w-xl text-center">
-        <div className="mx-auto flex size-12 items-center justify-center rounded-lg bg-muted">
-          <Users className="size-6 text-muted-foreground" />
-        </div>
-        <h2 className="mt-4 text-xl font-semibold">No profiles available</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Try opening your preferences and widening the dashboard.
-        </p>
-        <Button onClick={onLoadMore} className="mt-5">
-          Load more
-        </Button>
-      </Card>
-    )
+    return <DeckSkeleton />
   }
 
   if (!deckUsers.length) {
@@ -200,14 +210,13 @@ export default function SwipeDeck({
             Profiles you already viewed are hidden from the deck.
           </p>
           <div className="mt-5 flex flex-col justify-center gap-2 sm:flex-row">
-            <Button onClick={onLoadMore}>Load more</Button>
             <Button
               variant="outline"
-              onClick={() => setClearLikesOpen(true)}
+              onClick={restartViewedProfiles}
               className="gap-2"
             >
               <RotateCcw className="size-4" />
-              Clear liked
+              Start over
             </Button>
           </div>
         </Card>
@@ -287,6 +296,7 @@ export default function SwipeDeck({
               homeCountry={getHomeCountry?.(item.user)}
               languages={getLanguages?.(item.user) ?? []}
               onProfileClick={() => onViewProfile?.(item.user)}
+              onRequestSent={() => next("skip")}
               showActions={item.position === "active"}
               user={item.user}
             />
@@ -407,6 +417,33 @@ function getStackClass(position: "previous" | "active" | "next") {
   }
 
   return "left-1/2 z-30 -translate-x-1/2 translate-y-0 rotate-0 scale-100 opacity-100 shadow-xl shadow-primary/5 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:slide-in-from-bottom-4"
+}
+
+function DeckSkeleton() {
+  return (
+    <section className="mx-auto w-full max-w-[480px] space-y-4">
+      <div className="text-center">
+        <Skeleton className="mx-auto h-4 w-24" />
+      </div>
+      <Card className="mx-auto w-[min(26rem,82vw)] overflow-hidden p-0">
+        <Skeleton className="h-28 w-full rounded-none" />
+        <div className="-mt-16 flex flex-col items-center p-5 pt-0 text-center">
+          <Skeleton className="size-36 rounded-full border-4 border-background" />
+          <Skeleton className="mt-5 h-6 w-48" />
+          <Skeleton className="mt-2 h-4 w-28" />
+          <div className="mt-5 grid w-full gap-3">
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+          </div>
+          <div className="mt-5 grid w-full gap-2 sm:grid-cols-2">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        </div>
+      </Card>
+    </section>
+  )
 }
 
 function isCardUser(user: DeckUser): user is User {

@@ -120,7 +120,8 @@ function NotificationBell() {
   React.useEffect(() => {
     function onDoc(e: MouseEvent) {
       if (!wrapperRef.current) return
-      if (!wrapperRef.current.contains(e.target as Node)) setOpen(false)
+      const path = e.composedPath()
+      if (!path.includes(wrapperRef.current)) setOpen(false)
     }
 
     document.addEventListener("click", onDoc)
@@ -240,12 +241,20 @@ function NotificationRow({
         <p className="text-xs text-muted-foreground">{detail}</p>
       </div>
       {pendingIncoming ? (
-        <div className="flex shrink-0 gap-1">
+        <div
+          className="flex shrink-0 gap-1"
+          onPointerDown={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        >
           <Button
             type="button"
             size="icon-sm"
             aria-label={`Accept ${notification.profileName}'s request`}
-            onClick={() => respondToIncomingRequest(notification.id, "accepted")}
+            onClick={(event) => {
+              event.stopPropagation()
+              respondToIncomingRequest(notification.id, "accepted")
+            }}
             className="size-8"
           >
             <Check className="size-4" />
@@ -255,7 +264,10 @@ function NotificationRow({
             size="icon-sm"
             variant="outline"
             aria-label={`Reject ${notification.profileName}'s request`}
-            onClick={() => respondToIncomingRequest(notification.id, "rejected")}
+            onClick={(event) => {
+              event.stopPropagation()
+              respondToIncomingRequest(notification.id, "rejected")
+            }}
             className="size-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
           >
             <X className="size-4" />

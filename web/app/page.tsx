@@ -276,6 +276,7 @@ export default function Page() {
     []
   )
   const [locationsLoading, setLocationsLoading] = useState(true)
+  const fetchingUsersRef = React.useRef(false)
 
   function goHome() {
     if (prefs) {
@@ -322,6 +323,9 @@ export default function Page() {
   }
 
   async function fetchUsers(count = INITIAL_PROFILE_COUNT) {
+    if (fetchingUsersRef.current) return
+
+    fetchingUsersRef.current = true
     setLoading(true)
     try {
       const res = await fetch(
@@ -350,6 +354,7 @@ export default function Page() {
     } catch {
       // ignore demo API failures
     } finally {
+      fetchingUsersRef.current = false
       setLoading(false)
     }
   }
@@ -589,8 +594,6 @@ export default function Page() {
             user={selectedUser}
             onBack={goDeck}
           />
-        ) : loading && users.length === 0 ? (
-          <LoadingState />
         ) : (
           <div className="grid gap-6 lg:grid-cols-[160px_minmax(0,1fr)]">
             <aside className="order-1 lg:order-1">

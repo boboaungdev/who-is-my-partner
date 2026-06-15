@@ -59,13 +59,11 @@ export function saveRequestNotifications(
 }
 
 export function scheduleFakeRequestOutcome(user: User) {
-  const profileName = `${user.name.first} ${user.name.last}`
-
-  toast.message(`Request sent to ${profileName}`, {
-    description: "Waiting for their response...",
-  })
-
   window.setTimeout(() => {
+    const profileKey = getProfileKey(user)
+    const requestedProfiles = getSavedRequestedProfiles()
+    if (!requestedProfiles.includes(profileKey)) return
+
     const chance = Math.random()
     if (chance < 0.5) {
       createFakeRequestNotification(user, "accepted")
@@ -73,8 +71,6 @@ export function scheduleFakeRequestOutcome(user: User) {
     }
 
     if (chance < 0.6) {
-      const profileKey = getProfileKey(user)
-      const requestedProfiles = getSavedRequestedProfiles()
       saveRequestedProfiles(
         requestedProfiles.filter((key) => key !== profileKey)
       )
@@ -90,7 +86,7 @@ export function getLatestRequestStatus(
     (notification) =>
       notification.direction === "outgoing" &&
       notification.profileKey === profileKey &&
-      notification.status !== "pending"
+      notification.status === "accepted"
   )?.status as Exclude<RequestNotificationStatus, "pending"> | undefined
 }
 
@@ -210,12 +206,10 @@ function createFakeRequestNotification(
 
   if (status === "accepted") {
     toast.success(`${profileName} accepted your request`, {
-      description: "Open notifications to view the update.",
+      description: "You can message them now.",
     })
   } else {
-    toast.error(`${profileName} rejected your request`, {
-      description: "Open notifications to view the update.",
-    })
+    toast.error(`${profileName} rejected your request`)
   }
 }
 

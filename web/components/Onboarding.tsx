@@ -101,6 +101,16 @@ const MARITAL_STATUSES = [
   { value: "separated", label: "Separated" },
   { value: "widowed", label: "Widowed" },
 ]
+const OCCUPATION_SUGGESTIONS = [
+  "Business Owner",
+  "Developer",
+  "Designer",
+  "Teacher",
+  "Doctor",
+  "Engineer",
+  "Marketing Manager",
+  "Student",
+]
 const MAX_LANGUAGES = 5
 
 const DEFAULT_FORM: Prefs = {
@@ -295,6 +305,10 @@ export default function Onboarding({
     reader.readAsDataURL(file)
   }
 
+  function updateOccupation(occupation: string) {
+    update("occupation", sanitizeOccupation(occupation))
+  }
+
   function updateHomeCountry(homeCountry: string) {
     setForm((s) => ({
       ...s,
@@ -375,7 +389,7 @@ export default function Onboarding({
     form.currentCity.trim().length > 1 &&
     form.languages.length > 0
   const canContinueDetails =
-    form.occupation.trim().length > 1 &&
+    isSingleOccupation(form.occupation) &&
     form.relationshipGoal.trim().length > 1
   const canContinuePreferences =
     form.partnerGenders.length > 0 && form.partnerAges.length > 0
@@ -653,15 +667,45 @@ export default function Onboarding({
                   <GuidedField
                     label="Occupation"
                   >
-                    <div className="relative">
-                      <BriefcaseBusiness className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        value={form.occupation}
-                        placeholder="Business Owner, Designer, Developer..."
-                        onChange={(e) => update("occupation", e.target.value)}
-                        className="pl-9"
-                      />
+                    <div className="space-y-2.5">
+                      <div className="relative">
+                        <BriefcaseBusiness className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={form.occupation}
+                          placeholder="Business Owner"
+                          onChange={(e) => updateOccupation(e.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === ",") event.preventDefault()
+                          }}
+                          className="pl-9"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {OCCUPATION_SUGGESTIONS.map((occupation) => {
+                          const active = form.occupation === occupation
+
+                          return (
+                            <button
+                              key={occupation}
+                              type="button"
+                              onClick={() => updateOccupation(occupation)}
+                              className={cn(
+                                "rounded-full border bg-background px-3 py-1.5 text-sm font-medium transition hover:border-primary/40 hover:bg-muted/40",
+                                active &&
+                                  "border-primary bg-primary text-primary-foreground"
+                              )}
+                            >
+                              {occupation}
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
+                    {form.occupation.includes(",") ? (
+                      <p className="text-xs text-destructive">
+                        Add one occupation only.
+                      </p>
+                    ) : null}
                   </GuidedField>
                 </div>
               </div>
@@ -769,6 +813,16 @@ function getCountryFlag(country: string, flags: CountryFlagMap) {
   return flags[normalizeCountryName(country)]
 }
 
+function sanitizeOccupation(value: string) {
+  return value.replace(/,/g, "").replace(/\s+/g, " ").trimStart()
+}
+
+function isSingleOccupation(value: string) {
+  const occupation = sanitizeOccupation(value).trim()
+
+  return occupation.length > 1 && !occupation.includes(",")
+}
+
 function normalizeSavedForm(form: Prefs) {
   const currentCountry = form.currentCountry || form.country
   const currentCity = form.currentCity || form.city
@@ -776,6 +830,7 @@ function normalizeSavedForm(form: Prefs) {
 
   return {
     ...form,
+    occupation: sanitizeOccupation(form.occupation),
     homeCountry,
     currentCountry,
     currentCity,

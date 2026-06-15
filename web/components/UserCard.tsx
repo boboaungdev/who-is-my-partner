@@ -63,6 +63,7 @@ export default function UserCard({
   homeCountry,
   languages = [],
   onProfileClick,
+  onRequestSent,
   showActions = true,
   user,
 }: {
@@ -72,6 +73,7 @@ export default function UserCard({
   homeCountry?: string
   languages?: string[]
   onProfileClick?: () => void
+  onRequestSent?: () => void
   showActions?: boolean
   user: User
 }) {
@@ -124,7 +126,10 @@ export default function UserCard({
 
     saveRequestedProfiles(next)
     setRequestedProfiles(next)
-    if (!requested) scheduleFakeRequestOutcome(user)
+    if (!requested) {
+      scheduleFakeRequestOutcome(user)
+      onRequestSent?.()
+    }
   }
 
   const requestButton = getRequestButtonState(requestStatus, requested)
