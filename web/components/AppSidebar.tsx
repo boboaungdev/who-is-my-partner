@@ -88,7 +88,6 @@ export default function AppSidebar({
               <SidebarButton
                 active={activeItem === "discover"}
                 collapsed={collapsed}
-                description="Browse partner profiles"
                 icon={<Compass className="size-4" />}
                 label="Discover"
                 onClick={onDiscover}
@@ -96,7 +95,6 @@ export default function AppSidebar({
               <SidebarButton
                 active={activeItem === "connections"}
                 collapsed={collapsed}
-                description="Accepted matches"
                 icon={<HeartHandshake className="size-4" />}
                 label="Connections"
                 onClick={onConnections}
@@ -105,7 +103,6 @@ export default function AppSidebar({
                 active={activeItem === "notifications"}
                 badge={notificationCount}
                 collapsed={collapsed}
-                description="Requests and replies"
                 icon={<Bell className="size-4" />}
                 label="Notifications"
                 onClick={onNotifications}
@@ -113,7 +110,6 @@ export default function AppSidebar({
               <SidebarButton
                 active={activeItem === "me"}
                 collapsed={collapsed}
-                description="Your profile"
                 icon={<UserRound className="size-4" />}
                 label="Me"
                 onClick={onMe}
@@ -130,7 +126,6 @@ function SidebarButton({
   active,
   badge,
   collapsed,
-  description,
   icon,
   label,
   onClick,
@@ -138,7 +133,6 @@ function SidebarButton({
   active?: boolean
   badge?: number
   collapsed?: boolean
-  description: string
   icon: ReactNode
   label: string
   onClick: () => void
@@ -150,10 +144,10 @@ function SidebarButton({
       onClick={onClick}
       title={collapsed ? label : undefined}
       className={cn(
-        "h-auto w-full rounded-2xl text-left",
+        "h-auto w-full rounded-xl text-left",
         collapsed
-          ? "justify-center px-2 py-2.5"
-          : "justify-start px-3 py-3",
+          ? "justify-center px-2 py-2"
+          : "justify-start px-2.5 py-2.5",
         active
           ? "bg-[linear-gradient(135deg,color-mix(in_oklch,var(--primary),transparent_87%),color-mix(in_oklch,var(--accent),transparent_94%))] text-foreground shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--primary),transparent_80%)]"
           : "hover:bg-muted/70"
@@ -167,7 +161,7 @@ function SidebarButton({
       >
         <span
           className={cn(
-            "flex size-10 shrink-0 items-center justify-center rounded-xl",
+            "flex size-9 shrink-0 items-center justify-center rounded-lg",
             active
               ? "bg-primary text-primary-foreground"
               : "bg-muted text-muted-foreground"
@@ -177,16 +171,13 @@ function SidebarButton({
         </span>
         {!collapsed ? (
           <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-2">
-              <span className="truncate text-sm font-semibold">{label}</span>
+            <span className="flex items-center gap-2">
+              <span className="truncate text-[13px] font-semibold">{label}</span>
               {typeof badge === "number" && badge > 0 ? (
-                <Badge variant="secondary" className="rounded-full px-2 py-0">
+                <Badge variant="secondary" className="rounded-full px-1.5 py-0 text-[11px]">
                   {badge}
                 </Badge>
               ) : null}
-            </span>
-            <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-              {description}
             </span>
           </span>
         ) : null}

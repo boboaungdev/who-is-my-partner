@@ -36,11 +36,11 @@ import { getProfileLookingFor } from "@/lib/profile-looking-for"
 import { cn } from "@/lib/utils"
 import {
   getProfileKey,
-  getSavedRequestedProfiles,
   REQUESTED_PROFILES_EVENT,
   saveRequestedProfiles,
 } from "@/lib/profile-requests"
 import {
+  getPendingRequestedProfileKeys,
   getLatestRequestStatus,
   REQUEST_NOTIFICATIONS_EVENT,
   scheduleFakeRequestOutcome,
@@ -174,7 +174,7 @@ export default function UserCard({
 
   React.useEffect(() => {
     function syncRequestedProfiles() {
-      setRequestedProfiles(getSavedRequestedProfiles())
+      setRequestedProfiles(getPendingRequestedProfileKeys())
     }
 
     syncRequestedProfiles()

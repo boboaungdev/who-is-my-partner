@@ -62,7 +62,7 @@ export function saveRequestNotifications(
 export function scheduleFakeRequestOutcome(user: User) {
   window.setTimeout(() => {
     const profileKey = getProfileKey(user)
-    const requestedProfiles = getSavedRequestedProfiles()
+    const requestedProfiles = getPendingRequestedProfileKeys()
     if (!requestedProfiles.includes(profileKey)) return
 
     const chance = Math.random()
@@ -72,12 +72,31 @@ export function scheduleFakeRequestOutcome(user: User) {
     }
 
     if (chance < 0.6) {
-      saveRequestedProfiles(
-        requestedProfiles.filter((key) => key !== profileKey)
-      )
       createFakeRequestNotification(user, "rejected")
     }
   }, 5000)
+}
+
+export function getPendingRequestedProfileKeys() {
+  const requestedProfiles = getSavedRequestedProfiles()
+  const resolvedOutgoingKeys = new Set(
+    getSavedRequestNotifications()
+      .filter(
+        (notification) =>
+          notification.direction === "outgoing" &&
+          notification.status !== "pending"
+      )
+      .map((notification) => notification.profileKey)
+  )
+  const pendingRequestedProfiles = requestedProfiles.filter(
+    (key) => !resolvedOutgoingKeys.has(key)
+  )
+
+  if (pendingRequestedProfiles.length !== requestedProfiles.length) {
+    saveRequestedProfiles(pendingRequestedProfiles)
+  }
+
+  return pendingRequestedProfiles
 }
 
 export function getLatestRequestStatus(
@@ -87,7 +106,7 @@ export function getLatestRequestStatus(
     (notification) =>
       notification.direction === "outgoing" &&
       notification.profileKey === profileKey &&
-      notification.status === "accepted"
+      notification.status !== "pending"
   )?.status as Exclude<RequestNotificationStatus, "pending"> | undefined
 }
 
@@ -191,6 +210,10 @@ function createFakeRequestNotification(
   user: User,
   status: Exclude<RequestNotificationStatus, "pending">
 ) {
+  saveRequestedProfiles(
+    getSavedRequestedProfiles().filter((key) => key !== getProfileKey(user))
+  )
+
   const profileName = `${user.name.first} ${user.name.last}`
   const notification: RequestNotification = {
     id: `${getProfileKey(user)}-${Date.now()}`,

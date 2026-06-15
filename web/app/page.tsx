@@ -62,13 +62,14 @@ import {
 import { getProfileBadges } from "@/lib/profile-badges"
 import { getProfileLookingFor } from "@/lib/profile-looking-for"
 import {
+  getPendingRequestedProfileKeys,
   getSavedRequestNotifications,
   markRequestNotificationsRead,
   REQUEST_NOTIFICATIONS_EVENT,
   respondToIncomingRequest,
   type RequestNotification,
 } from "@/lib/request-notifications"
-import { getProfileKey, getSavedRequestedProfiles } from "@/lib/profile-requests"
+import { getProfileKey } from "@/lib/profile-requests"
 import { cn } from "@/lib/utils"
 
 type RandomUser = {
@@ -672,6 +673,16 @@ export default function Page() {
       shapeUserForFilters(user, index, prefs, locationOptions)
     )
   }, [filteredUsers, locationOptions, prefs])
+  const discoverHiddenProfileKeys = useDiscoverHiddenProfileKeys(Boolean(prefs))
+  const discoverUsers = useMemo(
+    () =>
+      displayUsers.filter((user) => {
+        const profileKey =
+          user.login?.uuid ?? `${user.name?.first ?? ""}-${user.name?.last ?? ""}`
+        return !discoverHiddenProfileKeys.includes(profileKey)
+      }),
+    [discoverHiddenProfileKeys, displayUsers]
+  )
 
   const signedUserImage = React.useMemo(() => {
     if (!prefs) return undefined
@@ -789,7 +800,7 @@ export default function Page() {
           countryMeta={countryMeta}
           locationOptions={locationOptions}
           locationsLoading={locationsLoading}
-          matchingCount={displayUsers.length}
+          matchingCount={discoverUsers.length}
           onPrefsChange={updatePrefs}
           prefs={prefs}
         />
@@ -805,13 +816,13 @@ export default function Page() {
                   getCountryName(user.nat, countryMeta) ?? user.location?.country
                 }
                 getLanguages={(user) =>
-                  getCountryLanguages(
-                    user.location?.country,
-                    countryMeta,
-                    getRandomUserKey(user)
-                  )
-                }
-                users={displayUsers}
+                getCountryLanguages(
+                  user.location?.country,
+                  countryMeta,
+                  getRandomUserKey(user)
+                )
+              }
+                users={discoverUsers}
           onLoadMore={() => fetchUsers(MORE_PROFILE_COUNT)}
           onViewProfile={(user) => {
             setSelectedUser(user)
@@ -925,9 +936,20 @@ export default function Page() {
 }
 
 function clearAppStorage() {
+  const appStoragePrefix = "wimp:"
+
   Object.keys(localStorage)
-    .filter((key) => key.startsWith("wimp:"))
+    .filter((key) => key.startsWith(appStoragePrefix))
     .forEach((key) => localStorage.removeItem(key))
+
+  Object.keys(sessionStorage)
+    .filter((key) => key.startsWith(appStoragePrefix))
+    .forEach((key) => sessionStorage.removeItem(key))
+
+  cachedSavedCounts = EMPTY_SAVED_COUNTS
+  window.dispatchEvent(new CustomEvent("wimp:liked-users:change"))
+  window.dispatchEvent(new CustomEvent("wimp:requested-profiles:change"))
+  window.dispatchEvent(new CustomEvent(REQUEST_NOTIFICATIONS_EVENT))
 }
 
 function SimpleProfileEditForm({
@@ -1475,7 +1497,9 @@ const EMPTY_SAVED_COUNTS: {
   likes: number
   requests: number
 } = { incoming: 0, likes: 0, requests: 0 }
+const EMPTY_DISCOVER_HIDDEN_PROFILE_KEYS: string[] = []
 let cachedSavedCounts = EMPTY_SAVED_COUNTS
+let cachedDiscoverHiddenProfileKeys = EMPTY_DISCOVER_HIDDEN_PROFILE_KEYS
 
 function getSavedCountsSnapshot(enabled: boolean) {
   if (!enabled || typeof window === "undefined") {
@@ -1487,7 +1511,7 @@ function getSavedCountsSnapshot(enabled: boolean) {
     incoming: notifications.filter((item) => item.direction === "incoming")
       .length,
     likes: getSavedLikedProfilesCount(),
-    requests: getSavedRequestedProfiles().length,
+    requests: getPendingRequestedProfileKeys().length,
   }
 
   if (
@@ -1507,6 +1531,40 @@ function useSavedCounts(enabled: boolean) {
     subscribeSavedData,
     () => getSavedCountsSnapshot(enabled),
     () => EMPTY_SAVED_COUNTS
+  )
+}
+
+function getDiscoverHiddenProfileKeysSnapshot(enabled: boolean) {
+  if (!enabled || typeof window === "undefined") {
+    return EMPTY_DISCOVER_HIDDEN_PROFILE_KEYS
+  }
+
+  const hiddenKeys = new Set<string>()
+
+  getSavedRequestNotifications()
+    .filter((notification) => notification.status === "accepted")
+    .forEach((notification) => {
+      hiddenKeys.add(notification.profileKey)
+    })
+
+  const next = Array.from(hiddenKeys).sort()
+
+  if (
+    cachedDiscoverHiddenProfileKeys.length === next.length &&
+    cachedDiscoverHiddenProfileKeys.every((key, index) => key === next[index])
+  ) {
+    return cachedDiscoverHiddenProfileKeys
+  }
+
+  cachedDiscoverHiddenProfileKeys = next
+  return cachedDiscoverHiddenProfileKeys
+}
+
+function useDiscoverHiddenProfileKeys(enabled: boolean) {
+  return React.useSyncExternalStore(
+    subscribeSavedData,
+    () => getDiscoverHiddenProfileKeysSnapshot(enabled),
+    () => EMPTY_DISCOVER_HIDDEN_PROFILE_KEYS
   )
 }
 
@@ -2187,7 +2245,7 @@ function ConnectionsView({
             notification.status === "pending"
         )
       )
-      setRequestedKeys(getSavedRequestedProfiles())
+      setRequestedKeys(getPendingRequestedProfileKeys())
     }
 
     syncConnections()
