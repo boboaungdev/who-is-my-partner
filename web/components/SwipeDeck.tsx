@@ -55,8 +55,11 @@ export default function SwipeDeck({
   const [likedUsers, setLikedUsers] = useState<User[]>([])
   const [restored, setRestored] = useState(false)
   const [seenProfileKeys, setSeenProfileKeys] = useState<string[]>([])
+  const [dragOffset, setDragOffset] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
   const onLoadMoreRef = React.useRef(onLoadMore)
   const lastAutoLoadUserCountRef = React.useRef(0)
+  const touchStartRef = React.useRef<{ x: number; y: number } | null>(null)
 
   const safeUsers = users.filter(isCardUser)
   const preferredCurrent = safeUsers[idx]
@@ -88,7 +91,9 @@ export default function SwipeDeck({
         deckUsers.findIndex((user) => getProfileKey(user) === getProfileKey(current))
       )
     : 0
-  const stackUsers = getStackUsers(deckUsers, activeIndex)
+  const dragDirection =
+    dragOffset > 0 ? "previous" : dragOffset < 0 ? "next" : "next"
+  const stackUsers = getStackUsers(deckUsers, activeIndex, dragDirection)
 
   React.useEffect(() => {
     if (idx >= deckUsers.length) setIdx(0)
@@ -151,6 +156,62 @@ export default function SwipeDeck({
     )
   }
 
+  function handleTouchStart(event: React.TouchEvent<HTMLDivElement>) {
+    const touch = event.touches[0]
+    if (!touch) return
+
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY }
+    setIsDragging(true)
+    setDragOffset(0)
+  }
+
+  function handleTouchMove(event: React.TouchEvent<HTMLDivElement>) {
+    const start = touchStartRef.current
+    const touch = event.touches[0]
+
+    if (!start || !touch) return
+
+    const deltaX = touch.clientX - start.x
+    const deltaY = touch.clientY - start.y
+
+    if (Math.abs(deltaX) <= Math.abs(deltaY)) {
+      setDragOffset(0)
+      return
+    }
+
+    if (event.cancelable) {
+      event.preventDefault()
+    }
+
+    setDragOffset(Math.max(-120, Math.min(120, deltaX)))
+  }
+
+  function handleTouchEnd(event: React.TouchEvent<HTMLDivElement>) {
+    const start = touchStartRef.current
+    const touch = event.changedTouches[0]
+    touchStartRef.current = null
+
+    if (!start || !touch) {
+      setIsDragging(false)
+      setDragOffset(0)
+      return
+    }
+
+    const deltaX = touch.clientX - start.x
+    const deltaY = touch.clientY - start.y
+
+    setIsDragging(false)
+    setDragOffset(0)
+
+    if (Math.abs(deltaX) < 48 || Math.abs(deltaX) <= Math.abs(deltaY)) return
+    if (deltaX < 0) {
+      goNext()
+      return
+    }
+
+    goPrevious()
+  }
+
   if (!safeUsers.length) {
     return <DeckSkeleton />
   }
@@ -170,64 +231,93 @@ export default function SwipeDeck({
   }
 
   return (
-    <section className="mx-auto w-full max-w-[460px] space-y-3">
+    <section className="mx-auto w-full max-w-[560px] space-y-3">
       <div className="text-center">
         <p className="text-sm font-semibold text-muted-foreground">
           Discover profiles
         </p>
       </div>
 
-      <div className="relative mx-auto h-[560px] w-full max-w-[520px] overflow-hidden sm:h-[610px]">
-        {stackUsers.map((item) => (
-          <UserCard
-            key={`${getProfileKey(item.user)}-${item.position}`}
-            className={cn(
-              "absolute top-0 w-[min(24rem,80vw)] transition-all duration-500 ease-out motion-safe:will-change-transform",
-              getStackClass(item.position)
-            )}
-            countryFlagUrl={getCountryFlagUrl?.(item.user)}
-            homeCountry={getHomeCountry?.(item.user)}
-            languages={getLanguages?.(item.user) ?? []}
-            onHideProfile={() => {
-              markProfileSeen(item.user)
-              setIdx(0)
-            }}
-            onProfileClick={() => {
-              onViewProfile?.(item.user)
-            }}
-            onRequestSent={goNext}
-            onSaveProfile={() => toggleSavedProfile(item.user)}
-            showActions={item.position === "active"}
-            showRequestMenu
-            user={item.user}
-          />
-        ))}
-      </div>
-
-      <div className="grid grid-cols-2 items-center gap-3">
+      <div className="mx-auto flex w-full max-w-[560px] items-center justify-center gap-3 sm:gap-4">
         <Button
           variant="outline"
-          size="lg"
+          size="icon"
           onClick={goPrevious}
-          className="h-12 gap-2"
+          className="hidden size-12 shrink-0 rounded-full border-border/70 bg-background/92 shadow-[0_14px_30px_rgba(15,23,42,0.08)] backdrop-blur sm:inline-flex"
+          aria-label="Previous profile"
         >
-          <ChevronLeft className="size-4" />
-          Prev
+          <ChevronLeft className="size-5" />
         </Button>
-        <Button
-          size="lg"
-          onClick={goNext}
-          className="h-12 gap-2"
+
+        <div
+          className="relative mx-auto h-[560px] w-full max-w-[520px] overflow-hidden sm:h-[610px]"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={() => {
+            touchStartRef.current = null
+            setIsDragging(false)
+            setDragOffset(0)
+          }}
         >
-          Next
-          <ChevronRight className="size-4" />
+          {stackUsers.map((item) => (
+            <UserCard
+              key={`${getProfileKey(item.user)}-${item.position}`}
+              className={cn(
+                "absolute top-0 w-[min(24rem,80vw)] ease-out motion-safe:will-change-transform",
+                item.position === "active"
+                  ? isDragging
+                    ? "transition-none"
+                    : "transition-transform duration-200 sm:duration-500"
+                  : "transition-all duration-500",
+                getStackClass(item.position)
+              )}
+              style={
+                getCardDragStyle(
+                  item.position,
+                  dragOffset
+                )
+              }
+              countryFlagUrl={getCountryFlagUrl?.(item.user)}
+              homeCountry={getHomeCountry?.(item.user)}
+              languages={getLanguages?.(item.user) ?? []}
+              onHideProfile={() => {
+                markProfileSeen(item.user)
+                setIdx(0)
+              }}
+              onProfileClick={() => {
+                onViewProfile?.(item.user)
+              }}
+              onSaveProfile={() => toggleSavedProfile(item.user)}
+              showActions={item.position === "active"}
+              showRequestMenu
+              user={item.user}
+            />
+          ))}
+        </div>
+
+        <Button
+          size="icon"
+          onClick={goNext}
+          className="hidden size-12 shrink-0 rounded-full shadow-[0_14px_30px_color-mix(in_oklch,var(--primary),transparent_72%)] sm:inline-flex"
+          aria-label="Next profile"
+        >
+          <ChevronRight className="size-5" />
         </Button>
       </div>
+
+      <p className="px-1 text-center text-xs text-muted-foreground sm:hidden">
+        Hold and swipe left or right to browse profiles.
+      </p>
     </section>
   )
 }
 
-function getStackUsers(users: User[], activeIndex: number) {
+function getStackUsers(
+  users: User[],
+  activeIndex: number,
+  dragDirection: "previous" | "next"
+) {
   if (users.length <= 1) {
     return users[0] ? [{ user: users[0], position: "active" as const }] : []
   }
@@ -242,10 +332,14 @@ function getStackUsers(users: User[], activeIndex: number) {
     ]
   }
 
+  const hintPosition =
+    dragDirection === "previous" ? "previous" : "next"
+  const hintUser =
+    hintPosition === "previous" ? users[previousIndex] : users[nextIndex]
+
   return [
-    { user: users[previousIndex], position: "previous" as const },
+    { user: hintUser, position: hintPosition as "previous" | "next" },
     { user: users[activeIndex], position: "active" as const },
-    { user: users[nextIndex], position: "next" as const },
   ]
 }
 
@@ -258,6 +352,46 @@ function getStackClass(position: "previous" | "active" | "next") {
   }
 
   return "left-1/2 z-30 -translate-x-1/2 translate-y-0 rotate-0 scale-100 opacity-100 shadow-xl shadow-primary/5 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:slide-in-from-bottom-4"
+}
+
+function getCardDragStyle(
+  position: "previous" | "active" | "next",
+  dragOffset: number
+): React.CSSProperties | undefined {
+  if (position === "active") {
+    if (dragOffset === 0) return undefined
+
+    return {
+      transform: `translateX(calc(-50% + ${dragOffset}px)) translateY(0px) rotate(${
+        dragOffset / 18
+      }deg) scale(1)`,
+      opacity: Math.max(0.86, 1 - Math.abs(dragOffset) / 260),
+    }
+  }
+
+  const revealProgress = Math.min(Math.abs(dragOffset) / 120, 1)
+
+  if (position === "previous" && dragOffset > 0) {
+    return {
+      zIndex: 24,
+      transform: `translateY(${20 - revealProgress * 12}px) rotate(${
+        -3 + revealProgress * 1.5
+      }deg) scale(${0.92 + revealProgress * 0.06})`,
+      opacity: 0.45 + revealProgress * 0.35,
+    }
+  }
+
+  if (position === "next" && dragOffset < 0) {
+    return {
+      zIndex: 24,
+      transform: `translateY(${20 - revealProgress * 12}px) rotate(${
+        3 - revealProgress * 1.5
+      }deg) scale(${0.92 + revealProgress * 0.06})`,
+      opacity: 0.45 + revealProgress * 0.35,
+    }
+  }
+
+  return undefined
 }
 
 function DeckSkeleton() {

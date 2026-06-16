@@ -83,7 +83,7 @@ export default function UserCard({
   onProfileClick,
   onRespondToIncomingRequest,
   onEditProfile,
-  requestedActionLabel = "Unsave",
+  requestedActionLabel = "Cancel request",
   onRequestSent,
   relationshipLabel,
   menuSaveLabel = "Save",
@@ -91,6 +91,7 @@ export default function UserCard({
   showProfileMenuItem = true,
   showRequestMenu = false,
   showActions = true,
+  style,
   variant = "request",
   user,
   clickableCard = false,
@@ -127,6 +128,7 @@ export default function UserCard({
   relationshipLabel?: string
   showRequestMenu?: boolean
   showActions?: boolean
+  style?: React.CSSProperties
   variant?: "request" | "self"
   user: User
 }) {
@@ -208,7 +210,7 @@ export default function UserCard({
       return
     }
 
-    // show loading state for 1s, then persist request and notify parent
+    // show loading state briefly, then persist request and notify parent
     setRequestLoading(true)
     // use window.setTimeout to get a numeric id (Node timeout types differ)
     requestTimerRef.current = window.setTimeout(() => {
@@ -219,7 +221,7 @@ export default function UserCard({
       setRequestLoading(false)
       onRequestSent?.()
       requestTimerRef.current = null
-    }, 1000) as unknown as number
+    }, 500) as unknown as number
   }
 
   React.useEffect(() => {
@@ -254,6 +256,7 @@ export default function UserCard({
           "cursor-pointer transition hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
         className
       )}
+      style={style}
       role={cardClickable ? "button" : undefined}
       tabIndex={cardClickable ? 0 : undefined}
       onClick={cardClickable ? onProfileClick : undefined}
@@ -629,7 +632,7 @@ function getRequestButtonState(
   if (requested) {
     return {
       disabled: false,
-      icon: <Bookmark className="size-4" />,
+      icon: <X className="size-4" />,
       label: requestedActionLabel,
       variant: "secondary" as const,
     }
